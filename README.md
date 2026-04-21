@@ -20,9 +20,8 @@ described below.
 
 ## Files
 
-- `ascii-video-converter-v2.html` — the full app (UI, ASCII renderer,
-  ffmpeg.wasm integration, WebCodecs encoder, GIF/MP4/shell exporters).
-  Everything lives here.
+- `index.html` — the full app (UI, ASCII renderer, ffmpeg.wasm integration,
+  WebCodecs encoder, GIF/MP4/shell exporters). Everything lives here.
 - `http.server.py` — a tiny static file server that adds the COOP/COEP headers
   required to enable `SharedArrayBuffer` in the browser.
 
@@ -32,7 +31,7 @@ described below.
 python3 http.server.py
 ```
 
-Then open http://localhost:8080/ascii-video-converter-v2.html in a browser.
+Then open http://localhost:8080/ in a browser.
 
 ## Why the custom server?
 
