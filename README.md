@@ -5,11 +5,23 @@ as MP4, GIF, a text frame, or a self-playing terminal shell script. Decoding is
 handled by `ffmpeg.wasm` by default, with an opt-in browser-decoder path for
 short clips.
 
+## Live demo (GitHub Pages)
+
+The app is served as a static demo at:
+
+> **https://ahkarhul.github.io/ascii-video-converter/**
+
+**Note:** GitHub Pages cannot set `Cross-Origin-Opener-Policy` /
+`Cross-Origin-Embedder-Policy` headers, so `SharedArrayBuffer` is unavailable
+there and the app falls back to the **single-threaded** `ffmpeg.wasm` core.
+Everything still works — decoding and all export formats — just without the
+~2–4× multi-threaded speed-up. For full performance use the local server
+described below.
+
 ## Files
 
-- `ascii-video-converter-v2.html` — the full app (UI, ASCII renderer,
-  ffmpeg.wasm integration, WebCodecs encoder, GIF/MP4/shell exporters).
-  Everything lives here.
+- `index.html` — the full app (UI, ASCII renderer, ffmpeg.wasm integration,
+  WebCodecs encoder, GIF/MP4/shell exporters). Everything lives here.
 - `http.server.py` — a tiny static file server that adds the COOP/COEP headers
   required to enable `SharedArrayBuffer` in the browser.
 
@@ -19,7 +31,7 @@ short clips.
 python3 http.server.py
 ```
 
-Then open http://localhost:8080/ascii-video-converter-v2.html in a browser.
+Then open http://localhost:8080/ in a browser.
 
 ## Why the custom server?
 

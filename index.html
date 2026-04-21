@@ -342,6 +342,21 @@
     </div>
 
     <script>
+        if (!window.crossOriginIsolated) {
+            setTimeout(() => {
+                const onPages = /\.github\.io$/i.test(location.hostname);
+                const where = onPages
+                    ? "You're running this on GitHub Pages, which can't set the COOP/COEP response headers required for SharedArrayBuffer."
+                    : "This page isn't cross-origin isolated (COOP/COEP headers are missing).";
+                alert(
+                    where + '\n\n' +
+                    'ffmpeg.wasm will run in single-threaded mode (~2–4× slower on multi-core machines). ' +
+                    'Decoding and every export format still work — just not at full speed.\n\n' +
+                    'For full performance, clone the repo and run: python3 http.server.py'
+                );
+            }, 0);
+        }
+
         // ffmpeg.wasm MEMFS is wasm32-bounded. This is a conservative ceiling for
         // the *raw RGB input* we feed to a single ffmpeg.exec() encode pass,
         // leaving room for ffmpeg's own working memory, libx264's internal
