@@ -338,8 +338,9 @@
                         <div id="videoFallbackNotice" class="video-fallback-notice hidden">
                             <strong>Your browser can't preview this container</strong> — likely MKV/AVI without the right OS codecs,
                             or a codec your browser doesn't ship (HEVC, AV1 without HW decode). That's fine:
-                            ffmpeg.wasm will decode it on convert. Set your Start/End times below and click
-                            <strong>Convert Full Range</strong>. Preview Current Frame needs the browser decoder, so it stays disabled.
+                            ffmpeg.wasm is reading the duration and dimensions now so it can still decode on convert.
+                            Preview Current Frame needs the browser decoder, so it stays disabled; once the probe finishes,
+                            adjust Start/End and click <strong>Convert Full Range</strong>.
                         </div>
                     </div>
 
@@ -791,6 +792,55 @@
             return name;
         }
 
+        // Runs ffmpeg on the source just long enough to make it print the
+        // Input/Stream header to stderr, then parses duration and video
+        // dimensions out of those lines. Used when the browser can't decode
+        // the container (e.g. MKV on a system without matching OS codecs) so
+        // we still have the metadata we need to size the ASCII grid and set
+        // the End-time default.
+        async function probeWithFFmpeg(file) {
+            const ffmpeg = await loadFFmpeg();
+            const name = await ensureFileInFFmpegFS(ffmpeg, file);
+
+            const captured = [];
+            const collector = ({ message }) => {
+                if (typeof message === 'string') captured.push(message);
+            };
+            ffmpeg.on('log', collector);
+
+            try {
+                // -frames:v 0 + null muxer → ffmpeg reads the container header
+                // and demuxer info, prints it, and exits without decoding any
+                // frames. Fast even for multi-GB files.
+                await ffmpeg.exec(['-hide_banner', '-i', name, '-frames:v', '0', '-f', 'null', '-']);
+            } catch (e) {
+                // Some inputs cause a non-zero exit (e.g. no decodable stream
+                // matched -frames:v). The header lines we need are already in
+                // `captured` by that point, so don't treat this as fatal.
+            } finally {
+                try { ffmpeg.off('log', collector); } catch (e) { /* older API */ }
+            }
+
+            let duration = 0;
+            let width = 0, height = 0;
+            for (const line of captured) {
+                if (!duration) {
+                    const m = line.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+                    if (m) duration = (+m[1]) * 3600 + (+m[2]) * 60 + parseFloat(m[3]);
+                }
+                if (!(width && height) && /\bStream\b.*Video:/.test(line)) {
+                    const m = line.match(/,\s*(\d{2,5})x(\d{2,5})\b/);
+                    if (m) { width = +m[1]; height = +m[2]; }
+                }
+                if (duration && width && height) break;
+            }
+
+            if (!duration && !(width && height)) {
+                throw new Error('ffmpeg could not read duration or video dimensions from this file.');
+            }
+            return { duration, width, height };
+        }
+
         // Emits frames at exactly target size and fps, in raw RGB24. Very fast —
         // this is where ffmpeg earns its weight vs the browser path.
         async function extractFramesFFmpeg(file, startTime, endTime, asciiW, asciiH, fps, charSet) {
@@ -962,13 +1012,46 @@
                 log('Note: requestVideoFrameCallback not supported by this browser.');
             }
         };
-        els.videoPlayer.onerror = () => {
-            log(`<video> can't decode this container/codec. That's expected for MKV/AVI without OS codecs, or for HEVC/AV1 without HW decode. Conversion via ffmpeg.wasm still works — set Start/End below and click Convert.`);
+        els.videoPlayer.onerror = async () => {
+            log(`<video> can't decode this container/codec. That's expected for MKV/AVI without OS codecs, or for HEVC/AV1 without HW decode. Asking ffmpeg.wasm for metadata so we can still convert it.`);
             els.videoFallbackNotice.classList.remove('hidden');
-            // ffmpeg path doesn't require <video> metadata; enable Convert so the user isn't stuck.
-            els.convertBtn.disabled = false;
             // Preview reads a frame from the <video> element, so it can't work without a browser-decoded source.
             els.previewBtn.disabled = true;
+            // Keep Convert disabled until the probe fills in duration/dimensions;
+            // without those, extractFramesFFmpeg bails out with a 0×0 grid error.
+            els.convertBtn.disabled = true;
+
+            const probedFile = state.file;
+            if (!probedFile) return;
+            try {
+                const { duration, width, height } = await probeWithFFmpeg(probedFile);
+                // User may have swapped the file while ffmpeg was loading/probing.
+                if (state.file !== probedFile) return;
+
+                if (width > 0 && height > 0) {
+                    state.videoAspect = height / width;
+                    recomputeAsciiDimsIfVideo();
+                }
+                if (duration > 0) {
+                    state.videoDuration = duration;
+                    els.endTime.value = Math.round(duration * 10) / 10;
+                    els.endTime.max = duration;
+                    els.startTime.max = duration;
+                }
+
+                const durTxt = duration > 0 ? `${Math.round(duration * 10) / 10}s` : 'unknown duration';
+                const dimTxt = (width > 0 && height > 0) ? `${width}×${height} source` : 'unknown dimensions';
+                $('videoInfo').textContent = `${durTxt} · ${dimTxt} (via ffmpeg) · ${state.asciiW}×${state.asciiH} ASCII grid`;
+                updateChunkWarning();
+
+                log(`ffmpeg metadata: ${durTxt}, ${dimTxt}. ASCII grid ${state.asciiW}×${state.asciiH}.`);
+                els.convertBtn.disabled = false;
+            } catch (e) {
+                log(`ffmpeg metadata probe failed: ${e.message}`);
+                // Still let the user try — they may have set Start/End manually
+                // and some codecs can decode even when the probe can't read a header.
+                els.convertBtn.disabled = false;
+            }
         };
 
         els.useFullBtn.onclick = () => {
