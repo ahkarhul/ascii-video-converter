@@ -336,11 +336,11 @@
                         <video id="videoPlayer" controls></video>
                         <div id="videoInfo" class="video-info"></div>
                         <div id="videoFallbackNotice" class="video-fallback-notice hidden">
-                            <strong>Your browser can't preview this container</strong> — likely MKV/AVI without the right OS codecs,
-                            or a codec your browser doesn't ship (HEVC, AV1 without HW decode). That's fine:
-                            ffmpeg.wasm is reading the duration and dimensions now so it can still decode on convert.
-                            Preview Current Frame needs the browser decoder, so it stays disabled; once the probe finishes,
-                            adjust Start/End and click <strong>Convert Full Range</strong>.
+                            <strong>Your browser can't preview this container natively</strong> — likely MKV/AVI
+                            without OS codecs, or HEVC/AV1 without hardware decode. ffmpeg.wasm is reading the
+                            duration and dimensions first, then transcoding a preview in the background so you
+                            can watch the source. Set Start/End and click <strong>Convert Full Range</strong>
+                            whenever — you don't have to wait for the preview to finish.
                         </div>
                     </div>
 
@@ -427,6 +427,14 @@
             ffmpegLoadingPromise: null,
             ffmpegInputName: null,
             ffmpegInputSize: 0,
+            // Preview-transcode tracking. When the <video> element can't decode
+            // the source natively, we transcode to MP4/H.264/AAC in the
+            // background so the user gets a watchable preview. The original
+            // file is still what we decode for the ASCII convert pass.
+            sourceObjectURL: null,       // blob: URL from the raw file, held so we can revoke
+            previewBlobURL: null,        // blob: URL from the transcoded MP4, held so we can revoke
+            previewTranscodeFor: null,   // the File object a transcode is currently running for
+            previewIsTranscoded: false,  // videoPlayer.src is the re-encoded MP4, not the original
         };
 
         // ==================== DOM Refs ====================
@@ -976,6 +984,115 @@
             }
         }
 
+        // Re-encodes the source to MP4/H.264/AAC in the background so the
+        // <video> element (and therefore the user's eyeballs) can play it
+        // when the browser decoder wouldn't accept the original container
+        // or codec. We never feed this transcoded copy back into the
+        // convert pass — ASCII extraction still runs on the untouched
+        // original via extractFramesFFmpeg — so this is purely cosmetic
+        // and its quality/bitrate can be whatever plays smoothly.
+        async function transcodeForPreview(file) {
+            const ffmpeg = await loadFFmpeg();
+            const inputName = await ensureFileInFFmpegFS(ffmpeg, file);
+            const outputName = 'preview.mp4';
+
+            const fallbackEl = els.videoFallbackNotice;
+            fallbackEl.classList.remove('hidden');
+            fallbackEl.innerHTML =
+                '<strong>Transcoding preview in the background…</strong> ' +
+                'ffmpeg.wasm is re-encoding the source to MP4 so your browser can play it. ' +
+                'Meanwhile you can set Start/End and click <strong>Convert Full Range</strong> — ' +
+                'the ASCII pass decodes the original file, not this preview, so you don\'t lose quality by skipping ahead. ' +
+                '<span id="previewTranscodePct" style="color:#c4b5fd;">starting…</span>';
+
+            const progressHandler = ({ progress }) => {
+                if (state.file !== file) return;
+                if (progress > 0 && progress <= 1) {
+                    const pctEl = $('previewTranscodePct');
+                    if (pctEl) pctEl.textContent = `${Math.round(progress * 100)}% transcoded`;
+                }
+            };
+            ffmpeg.on('progress', progressHandler);
+
+            log('ffmpeg: transcoding preview (MP4/H.264/AAC, ultrafast)...');
+            const tStart = performance.now();
+            try {
+                // -preset ultrafast + -crf 30 → prioritize encode speed; this
+                //   is a throwaway preview, not an export.
+                // -vf scale=trunc/2*2 → H.264 yuv420p needs even dims.
+                // -c:a aac with no explicit stream map → ffmpeg picks the
+                //   default audio stream if one exists, silently drops it if
+                //   the source has none.
+                // -movflags +faststart → harmless on blob: URLs, good habit.
+                await ffmpeg.exec([
+                    '-i', inputName,
+                    '-vf', "scale='trunc(iw/2)*2':'trunc(ih/2)*2'",
+                    '-c:v', 'libx264',
+                    '-preset', 'ultrafast',
+                    '-crf', '30',
+                    '-pix_fmt', 'yuv420p',
+                    '-c:a', 'aac',
+                    '-b:a', '128k',
+                    '-movflags', '+faststart',
+                    '-y',
+                    outputName,
+                ]);
+            } finally {
+                try { ffmpeg.off('progress', progressHandler); } catch (e) { /* older API */ }
+            }
+
+            // User swapped files mid-transcode — discard.
+            if (state.file !== file) {
+                try { await ffmpeg.deleteFile(outputName); } catch (e) { /* ignore */ }
+                return null;
+            }
+
+            const data = await ffmpeg.readFile(outputName);
+            try { await ffmpeg.deleteFile(outputName); } catch (e) { /* ignore */ }
+
+            log(`ffmpeg: preview transcode done in ${((performance.now() - tStart) / 1000).toFixed(1)}s (${(data.length / 1024 / 1024).toFixed(1)} MB).`);
+            // Slice to get a clean ArrayBuffer (Uint8Array views from wasm
+            // heap can have lingering offsets that confuse Blob).
+            const ab = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+            return new Blob([ab], { type: 'video/mp4' });
+        }
+
+        async function kickOffPreviewTranscode(file) {
+            if (state.previewTranscodeFor === file) return;
+            state.previewTranscodeFor = file;
+            try {
+                const blob = await transcodeForPreview(file);
+                if (!blob) return;
+                if (state.file !== file) return;
+
+                if (state.previewBlobURL) URL.revokeObjectURL(state.previewBlobURL);
+                const url = URL.createObjectURL(blob);
+                state.previewBlobURL = url;
+                state.previewIsTranscoded = true;
+
+                els.videoFallbackNotice.classList.add('hidden');
+                els.videoFallbackNotice.innerHTML = '';
+                els.videoPlayer.src = url;
+                // The raw-file blob URL is no longer attached to <video>;
+                // release it so the browser can drop the file-backed blob
+                // (can be hundreds of MB for a typical source).
+                if (state.sourceObjectURL) {
+                    URL.revokeObjectURL(state.sourceObjectURL);
+                    state.sourceObjectURL = null;
+                }
+                log('Preview swapped to transcoded MP4 — browser decoder can now play it.');
+            } catch (e) {
+                if (state.file !== file) return;
+                log(`Preview transcode failed: ${e.message}`);
+                els.videoFallbackNotice.classList.remove('hidden');
+                els.videoFallbackNotice.textContent =
+                    `Preview transcode failed (${e.message}). Convert still works — ` +
+                    `ffmpeg reads the original file directly, independent of the preview.`;
+            } finally {
+                if (state.previewTranscodeFor === file) state.previewTranscodeFor = null;
+            }
+        }
+
         // ==================== File Upload ====================
         els.uploadBtn.onclick = () => els.fileInput.click();
         els.fileInput.onchange = (e) => {
@@ -985,7 +1102,17 @@
             // Invalidate ffmpeg FS cache — new file.
             state.ffmpegInputName = null;
             state.ffmpegInputSize = 0;
+            // Release any blob URLs held from a previous upload so we don't
+            // slowly accumulate them over multiple file swaps.
+            if (state.sourceObjectURL) { URL.revokeObjectURL(state.sourceObjectURL); state.sourceObjectURL = null; }
+            if (state.previewBlobURL) { URL.revokeObjectURL(state.previewBlobURL); state.previewBlobURL = null; }
+            // A transcode for a previous file may still be in flight; the
+            // file-identity guards inside it will drop its results. Reset
+            // the flags so the new file starts with a clean slate.
+            state.previewTranscodeFor = null;
+            state.previewIsTranscoded = false;
             const url = URL.createObjectURL(file);
+            state.sourceObjectURL = url;
             els.videoPlayer.src = url;
             $('welcomeBox').classList.add('hidden');
             $('videoBox').classList.remove('hidden');
@@ -998,6 +1125,18 @@
 
         els.videoPlayer.onloadedmetadata = () => {
             const v = els.videoPlayer;
+            // When we swap .src to a transcoded MP4, this handler fires a
+            // second time. The probe/original-file path already populated
+            // duration, dimensions, Start/End and the ASCII grid — and the
+            // user may have adjusted Start/End while waiting for the
+            // transcode. Don't clobber any of that; just (re-)enable the
+            // buttons that depend on a browser-decodable source.
+            if (state.previewIsTranscoded) {
+                els.previewBtn.disabled = false;
+                els.convertBtn.disabled = false;
+                log(`Transcoded preview loaded: ${v.videoWidth}×${v.videoHeight}, ${v.duration.toFixed(1)}s. Preview Current Frame re-enabled.`);
+                return;
+            }
             state.videoDuration = v.duration;
             state.videoAspect = v.videoHeight / v.videoWidth;
             recomputeAsciiDimsIfVideo();
@@ -1013,7 +1152,14 @@
             }
         };
         els.videoPlayer.onerror = async () => {
-            log(`<video> can't decode this container/codec. That's expected for MKV/AVI without OS codecs, or for HEVC/AV1 without HW decode. Asking ffmpeg.wasm for metadata so we can still convert it.`);
+            // Once we've swapped in a transcoded MP4, any further <video>
+            // errors are real problems with the transcode — don't retry,
+            // don't overwrite the (now-stale) fallback notice, don't loop.
+            if (state.previewIsTranscoded) {
+                log('<video> reported an error on the transcoded preview. Leaving current state alone.');
+                return;
+            }
+            log(`<video> can't decode this container/codec. That's expected for MKV/AVI without OS codecs, or for HEVC/AV1 without HW decode. Asking ffmpeg.wasm for metadata, then transcoding a preview in the background.`);
             els.videoFallbackNotice.classList.remove('hidden');
             // Preview reads a frame from the <video> element, so it can't work without a browser-decoded source.
             els.previewBtn.disabled = true;
@@ -1046,6 +1192,12 @@
 
                 log(`ffmpeg metadata: ${durTxt}, ${dimTxt}. ASCII grid ${state.asciiW}×${state.asciiH}.`);
                 els.convertBtn.disabled = false;
+
+                // Fire off the transcode without awaiting — the main thread
+                // stays responsive (ffmpeg.wasm runs on a worker) and the
+                // user can hit Convert immediately. The result, when ready,
+                // swaps into <video> as a playable MP4.
+                kickOffPreviewTranscode(probedFile);
             } catch (e) {
                 log(`ffmpeg metadata probe failed: ${e.message}`);
                 // Still let the user try — they may have set Start/End manually
@@ -1117,7 +1269,14 @@
                 let usedEngine = null;
 
                 // Default: ffmpeg. The checkbox flips us to try the browser path first.
-                const tryBrowserFirst = state.settings.preferBrowser && v.duration;
+                // But if the <video> is currently showing a transcoded preview (because
+                // the browser couldn't decode the original), decoding from it would
+                // run ASCII on a re-encoded copy — lossy and silly when the original
+                // is already mounted in ffmpeg's FS. Force ffmpeg in that case.
+                const tryBrowserFirst = state.settings.preferBrowser && v.duration && !state.previewIsTranscoded;
+                if (state.settings.preferBrowser && state.previewIsTranscoded) {
+                    log('preferBrowser is on but the <video> source is a transcoded preview — using ffmpeg on the original to avoid a re-encode round-trip.');
+                }
 
                 if (tryBrowserFirst) {
                     const hasRVFC = typeof v.requestVideoFrameCallback === 'function';
