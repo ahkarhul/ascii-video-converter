@@ -435,6 +435,8 @@
             previewBlobURL: null,        // blob: URL from the transcoded MP4, held so we can revoke
             previewTranscodeFor: null,   // the File object a transcode is currently running for
             previewIsTranscoded: false,  // videoPlayer.src is the re-encoded MP4, not the original
+            fallbackStartedFor: null,    // File we've already routed to the ffmpeg fallback — don't re-trigger
+            fallbackWatchdog: null,      // setTimeout handle for the Firefox-stall watchdog
         };
 
         // ==================== DOM Refs ====================
@@ -1111,6 +1113,11 @@
             // the flags so the new file starts with a clean slate.
             state.previewTranscodeFor = null;
             state.previewIsTranscoded = false;
+            state.fallbackStartedFor = null;
+            if (state.fallbackWatchdog) {
+                clearTimeout(state.fallbackWatchdog);
+                state.fallbackWatchdog = null;
+            }
             const url = URL.createObjectURL(file);
             state.sourceObjectURL = url;
             els.videoPlayer.src = url;
@@ -1121,6 +1128,27 @@
             els.convertBtn.disabled = true;
             log(`Loaded: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB, ${file.type || 'unknown type'})`);
             showLog();
+
+            // Firefox watchdog: Firefox's <video> element can take minutes
+            // to fire `error` for codecs it can't decode (MKV without OS
+            // support, HEVC, AV1 without HW decode, etc.), while Chrome
+            // fires it in tens of milliseconds. Without this, the user
+            // stares at a blank player waiting for our ffmpeg fallback to
+            // kick in. If nothing has happened within a short window —
+            // no metadata (readyState >= 1), no error, and we haven't
+            // already routed to the fallback — assume the decoder is
+            // stalled and run the fallback manually.
+            state.fallbackWatchdog = setTimeout(() => {
+                state.fallbackWatchdog = null;
+                if (state.file !== file) return;
+                if (state.fallbackStartedFor === file) return;
+                const v = els.videoPlayer;
+                if (v.readyState >= 1 || v.error) return;
+                runVideoFallback(
+                    file,
+                    `<video> hasn't reported metadata after 3s — Firefox sometimes stalls for minutes on containers/codecs it can't decode rather than firing an error.`
+                );
+            }, 3000);
         };
 
         els.videoPlayer.onloadedmetadata = () => {
@@ -1151,15 +1179,22 @@
                 log('Note: requestVideoFrameCallback not supported by this browser.');
             }
         };
-        els.videoPlayer.onerror = async () => {
-            // Once we've swapped in a transcoded MP4, any further <video>
-            // errors are real problems with the transcode — don't retry,
-            // don't overwrite the (now-stale) fallback notice, don't loop.
-            if (state.previewIsTranscoded) {
-                log('<video> reported an error on the transcoded preview. Leaving current state alone.');
-                return;
+        // Routes a file through the ffmpeg fallback path: probe metadata,
+        // enable Convert, kick off the background preview transcode. Called
+        // both by <video>.onerror (Chrome's fast path) and by the Firefox
+        // watchdog (when <video> stalls without firing error). Guarded so
+        // repeated triggers for the same file are no-ops.
+        async function runVideoFallback(probedFile, reason) {
+            if (!probedFile) return;
+            if (state.fallbackStartedFor === probedFile) return;
+            state.fallbackStartedFor = probedFile;
+
+            if (state.fallbackWatchdog) {
+                clearTimeout(state.fallbackWatchdog);
+                state.fallbackWatchdog = null;
             }
-            log(`<video> can't decode this container/codec. That's expected for MKV/AVI without OS codecs, or for HEVC/AV1 without HW decode. Asking ffmpeg.wasm for metadata, then transcoding a preview in the background.`);
+
+            log(`${reason} Asking ffmpeg.wasm for metadata, then transcoding a preview in the background.`);
             els.videoFallbackNotice.classList.remove('hidden');
             // Preview reads a frame from the <video> element, so it can't work without a browser-decoded source.
             els.previewBtn.disabled = true;
@@ -1167,8 +1202,6 @@
             // without those, extractFramesFFmpeg bails out with a 0×0 grid error.
             els.convertBtn.disabled = true;
 
-            const probedFile = state.file;
-            if (!probedFile) return;
             try {
                 const { duration, width, height } = await probeWithFFmpeg(probedFile);
                 // User may have swapped the file while ffmpeg was loading/probing.
@@ -1204,6 +1237,20 @@
                 // and some codecs can decode even when the probe can't read a header.
                 els.convertBtn.disabled = false;
             }
+        }
+
+        els.videoPlayer.onerror = () => {
+            // Once we've swapped in a transcoded MP4, any further <video>
+            // errors are real problems with the transcode — don't retry,
+            // don't overwrite the (now-stale) fallback notice, don't loop.
+            if (state.previewIsTranscoded) {
+                log('<video> reported an error on the transcoded preview. Leaving current state alone.');
+                return;
+            }
+            runVideoFallback(
+                state.file,
+                `<video> can't decode this container/codec. That's expected for MKV/AVI without OS codecs, or for HEVC/AV1 without HW decode.`
+            );
         };
 
         els.useFullBtn.onclick = () => {
