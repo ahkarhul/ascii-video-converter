@@ -1885,6 +1885,35 @@ self.onmessage = async function (e) {
             }
         }
 
+        // Stream the File into an in-memory Uint8Array, updating the progress
+        // status line every 5% of bytes read. Without this, a big MKV sits
+        // silent for seconds on slow disks because file.arrayBuffer() is a
+        // single opaque read — the user can't tell loading from hanging.
+        async function readFileWithProgress(file, onProgress) {
+            const total = file.size;
+            const out = new Uint8Array(total);
+            const reader = file.stream().getReader();
+            let offset = 0;
+            let lastReport = -1;
+            try {
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    if (state.cancelRequested) throw new Error('Cancelled during file read.');
+                    out.set(value, offset);
+                    offset += value.byteLength;
+                    const pct = total > 0 ? Math.floor(offset / total * 20) : 0; // 5% ticks
+                    if (pct !== lastReport) {
+                        lastReport = pct;
+                        onProgress(offset, total);
+                    }
+                }
+            } finally {
+                try { reader.releaseLock(); } catch (_) {}
+            }
+            return out;
+        }
+
         async function ensureFileInFFmpegFS(ffmpeg, file) {
             const ext = (file.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '');
             const name = `source.${ext || 'bin'}`;
@@ -1894,10 +1923,32 @@ self.onmessage = async function (e) {
             if (state.ffmpegInputName) {
                 try { await ffmpeg.deleteFile(state.ffmpegInputName); } catch (e) { /* ignore */ }
             }
-            log(`ffmpeg: writing ${(file.size / 1024 / 1024).toFixed(1)} MB to virtual FS as ${name}...`);
-            $('progress').textContent = 'Copying file into ffmpeg...';
-            const data = new Uint8Array(await file.arrayBuffer());
-            await ffmpeg.writeFile(name, data);
+            const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+            log(`ffmpeg: reading ${sizeMB} MB from disk...`);
+            const tRead = performance.now();
+            const data = await readFileWithProgress(file, (read, total) => {
+                const pct = Math.round(read / total * 100);
+                const readMB = (read / 1048576).toFixed(0);
+                $('progress').textContent = `Reading file: ${pct}% (${readMB}/${Math.round(total / 1048576)} MB)`;
+            });
+            log(`ffmpeg: read ${sizeMB} MB in ${((performance.now() - tRead) / 1000).toFixed(1)}s. Copying to virtual FS...`);
+
+            // Heartbeat during the wasm-heap copy. The postMessage itself is
+            // zero-copy (Transferable), but the worker then memcpy's into the
+            // wasm heap. Can take 1-5s on slow machines for a ~200MB file
+            // with no intermediate signal — ticker shows we're not stuck.
+            const tWrite = performance.now();
+            const heartbeat = setInterval(() => {
+                const elapsed = ((performance.now() - tWrite) / 1000).toFixed(0);
+                $('progress').textContent = `Copying ${sizeMB} MB to ffmpeg virtual FS... (${elapsed}s)`;
+            }, 500);
+            $('progress').textContent = `Copying ${sizeMB} MB to ffmpeg virtual FS...`;
+            try {
+                await ffmpeg.writeFile(name, data);
+            } finally {
+                clearInterval(heartbeat);
+            }
+            log(`ffmpeg: write complete in ${((performance.now() - tWrite) / 1000).toFixed(1)}s.`);
             state.ffmpegInputName = name;
             state.ffmpegInputSize = file.size;
             return name;
