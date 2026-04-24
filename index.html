@@ -653,7 +653,22 @@
         .log .log-line.log-err     { color: var(--red); }
         .log .log-line.log-ffmpeg  { color: var(--phos-dim); }
         .log .log-line.log-ok      { color: var(--phos-hot); text-shadow: 0 0 4px var(--phos-hot); }
-        .log .log-line:last-child::after {
+        /* Blinking cursor: sits at the end of the status line when one's
+           showing, otherwise at the end of the most recent real log line.
+           The status div is always the last child of #logBox; we use :has
+           to detect whether it's empty and move the cursor accordingly. */
+        .log .log-status {
+            display: block;
+            color: var(--phos);
+            font-variant-numeric: tabular-nums;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .log .log-status:empty { display: none; }
+        /* Cursor on the status line when it has content */
+        .log .log-status:not(:empty)::after,
+        /* ...otherwise on the log-line immediately before the empty status */
+        .log .log-line:has(+ .log-status:empty)::after {
             content: "_";
             color: var(--phos-hot);
             animation: blink 1.05s steps(2) infinite;
@@ -871,7 +886,6 @@
                             Uncheck to retry multi-threading (e.g. after the upstream bug
                             is fixed, or on a different machine).
                         </div>
-                        <div id="progress" class="status-line"></div>
                     </div>
 
                     <div id="playbackBox" class="section hidden">
@@ -936,7 +950,7 @@
                         </div>
                         <div id="logPanel" class="panel log-panel">
                             <h3>Log</h3>
-                            <div id="logBox" class="log"></div>
+                            <div id="logBox" class="log"><div id="progress" class="log-status"></div></div>
                         </div>
                     </div>
 
@@ -1303,8 +1317,15 @@ self.onmessage = async function (e) {
             console.log(`[${t}] ${msg}`);
             const box = els.logBox;
             if (!box) return;
-            while (box.childElementCount >= MAX_LOG_LINES && box.firstChild) {
-                box.removeChild(box.firstChild);
+            // The status line is pinned to the bottom of the log box — new
+            // log lines always insert before it so the live status stays
+            // as the last child and the blinking cursor reads correctly.
+            const status = box.querySelector('.log-status');
+            // Count log lines, not status, when deciding whether to trim.
+            while (box.querySelectorAll('.log-line').length >= MAX_LOG_LINES) {
+                const firstLine = box.querySelector('.log-line');
+                if (!firstLine) break;
+                box.removeChild(firstLine);
             }
             const line = document.createElement('div');
             line.className = 'log-line ' + classifyLog(msg);
@@ -1313,7 +1334,8 @@ self.onmessage = async function (e) {
             tSpan.textContent = `[${t}]`;
             line.appendChild(tSpan);
             line.appendChild(document.createTextNode(msg));
-            box.appendChild(line);
+            if (status) box.insertBefore(line, status);
+            else box.appendChild(line);
             box.scrollTop = box.scrollHeight;
         }
         // The log panel is visible from page load. Kept as a no-op helper
