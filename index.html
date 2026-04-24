@@ -1016,25 +1016,33 @@
             };
             ffmpeg.on('progress', progressHandler);
 
-            log('ffmpeg: transcoding preview (MP4/H.264/AAC, ultrafast)...');
+            log('ffmpeg: transcoding preview (MP4/H.264/AAC, ultrafast, 480p)...');
             const tStart = performance.now();
             try {
                 // -preset ultrafast + -crf 30 → prioritize encode speed; this
                 //   is a throwaway preview, not an export.
-                // -vf scale=trunc/2*2 → H.264 yuv420p needs even dims.
-                // -c:a aac with no explicit stream map → ffmpeg picks the
-                //   default audio stream if one exists, silently drops it if
-                //   the source has none.
+                // -vf scale=-2:min(480,ih) → cap height at 480 (don't upscale
+                //   shorter sources), width auto to preserve aspect and land
+                //   on an even number (yuv420p requires even dims). H.264
+                //   encode time scales ~linearly with pixel count, so a
+                //   1080p source drops from 2.07 Mpx to ~410 kpx per frame,
+                //   a ~5× speed-up with negligible preview quality cost.
+                // -c:a aac 64k mono 22.05 kHz → preview-grade audio, small
+                //   enough that the audio encode is ≲5% of video encode time.
+                //   Fine for "is this the right clip?"; convert still decodes
+                //   the original file for the actual ASCII output.
                 // -movflags +faststart → harmless on blob: URLs, good habit.
                 await ffmpeg.exec([
                     '-i', inputName,
-                    '-vf', "scale='trunc(iw/2)*2':'trunc(ih/2)*2'",
+                    '-vf', "scale=-2:'min(480,ih)'",
                     '-c:v', 'libx264',
                     '-preset', 'ultrafast',
                     '-crf', '30',
                     '-pix_fmt', 'yuv420p',
                     '-c:a', 'aac',
-                    '-b:a', '128k',
+                    '-b:a', '64k',
+                    '-ac', '1',
+                    '-ar', '22050',
                     '-movflags', '+faststart',
                     '-y',
                     outputName,
