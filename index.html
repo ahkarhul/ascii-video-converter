@@ -182,11 +182,26 @@
             font-family: "SF Mono", Menlo, monospace;
             font-size: 0.6875rem;
             color: var(--fg-1);
-            max-height: 8rem;
             overflow-y: auto;
             white-space: pre-wrap;
-            margin-top: 0.5rem;
+            flex: 1;
+            min-height: 10rem;
         }
+        .source-row {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1rem;
+            align-items: stretch;
+        }
+        @media (min-width: 900px) {
+            .source-row { grid-template-columns: 1fr 1fr; }
+        }
+        .source-row > .panel {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+        .log-panel { min-height: 18rem; }
         .engine-badge {
             display: inline-block;
             padding: 0.125rem 0.375rem;
@@ -281,7 +296,6 @@
                             fall back to ffmpeg automatically.
                         </div>
                         <div id="progress" class="status-line"></div>
-                        <div id="logBox" class="log hidden"></div>
                     </div>
 
                     <div id="playbackBox" class="section hidden">
@@ -331,16 +345,22 @@
             <!-- Display -->
             <div>
                 <div class="stack">
-                    <div id="videoBox" class="panel hidden">
-                        <h3>Source Video</h3>
-                        <video id="videoPlayer" controls></video>
-                        <div id="videoInfo" class="video-info"></div>
-                        <div id="videoFallbackNotice" class="video-fallback-notice hidden">
-                            <strong>Your browser can't preview this container natively</strong> — likely MKV/AVI
-                            without OS codecs, or HEVC/AV1 without hardware decode. ffmpeg.wasm is reading the
-                            duration and dimensions first, then transcoding a preview in the background so you
-                            can watch the source. Set Start/End and click <strong>Convert Full Range</strong>
-                            whenever — you don't have to wait for the preview to finish.
+                    <div id="sourceRow" class="source-row hidden">
+                        <div id="videoBox" class="panel">
+                            <h3>Source Video</h3>
+                            <video id="videoPlayer" controls></video>
+                            <div id="videoInfo" class="video-info"></div>
+                            <div id="videoFallbackNotice" class="video-fallback-notice hidden">
+                                <strong>Your browser can't preview this container natively</strong> — likely MKV/AVI
+                                without OS codecs, or HEVC/AV1 without hardware decode. ffmpeg.wasm is reading the
+                                duration and dimensions first, then transcoding a preview in the background so you
+                                can watch the source. Set Start/End and click <strong>Convert Full Range</strong>
+                                whenever — you don't have to wait for the preview to finish.
+                            </div>
+                        </div>
+                        <div id="logPanel" class="panel log-panel">
+                            <h3>Log</h3>
+                            <div id="logBox" class="log"></div>
                         </div>
                     </div>
 
@@ -366,12 +386,12 @@
                 const where = onPages
                     ? "You're running this on GitHub Pages, which can't set the COOP/COEP response headers required for SharedArrayBuffer."
                     : "This page isn't cross-origin isolated (COOP/COEP headers are missing).";
-                alert(
-                    where + '\n\n' +
+                const msg = where + '\n\n' +
                     'ffmpeg.wasm will run in single-threaded mode (~2–4× slower on multi-core machines). ' +
                     'Decoding and every export format still work — just not at full speed.\n\n' +
-                    'For full performance, clone the repo and run: python3 http.server.py'
-                );
+                    'For full performance, clone the repo and run: python3 http.server.py';
+                log(msg.replace(/\n+/g, ' '));
+                alert(msg);
             }, 0);
         }
 
@@ -435,6 +455,8 @@
             previewBlobURL: null,        // blob: URL from the transcoded MP4, held so we can revoke
             previewTranscodeFor: null,   // the File object a transcode is currently running for
             previewIsTranscoded: false,  // videoPlayer.src is the re-encoded MP4, not the original
+            fallbackStartedFor: null,    // File we've already routed to the ffmpeg fallback — don't re-trigger
+            fallbackWatchdog: null,      // setTimeout handle for the Firefox-stall watchdog
         };
 
         // ==================== DOM Refs ====================
@@ -468,7 +490,11 @@
             els.logBox.scrollTop = els.logBox.scrollHeight;
             console.log(line);
         }
-        function showLog() { els.logBox.classList.remove('hidden'); }
+        // The log lives inside #sourceRow now, so revealing the source row
+        // takes care of showing it. Kept as a named helper so callers that
+        // want logs visible before a file is chosen (e.g. ffmpeg bootstrap
+        // triggered by export) still work.
+        function showLog() { $('sourceRow').classList.remove('hidden'); }
 
         // ==================== UI Sync ====================
         function syncUIFromState() {
@@ -1014,25 +1040,33 @@
             };
             ffmpeg.on('progress', progressHandler);
 
-            log('ffmpeg: transcoding preview (MP4/H.264/AAC, ultrafast)...');
+            log('ffmpeg: transcoding preview (MP4/H.264/AAC, ultrafast, 480p)...');
             const tStart = performance.now();
             try {
                 // -preset ultrafast + -crf 30 → prioritize encode speed; this
                 //   is a throwaway preview, not an export.
-                // -vf scale=trunc/2*2 → H.264 yuv420p needs even dims.
-                // -c:a aac with no explicit stream map → ffmpeg picks the
-                //   default audio stream if one exists, silently drops it if
-                //   the source has none.
+                // -vf scale=-2:min(480,ih) → cap height at 480 (don't upscale
+                //   shorter sources), width auto to preserve aspect and land
+                //   on an even number (yuv420p requires even dims). H.264
+                //   encode time scales ~linearly with pixel count, so a
+                //   1080p source drops from 2.07 Mpx to ~410 kpx per frame,
+                //   a ~5× speed-up with negligible preview quality cost.
+                // -c:a aac 64k mono 22.05 kHz → preview-grade audio, small
+                //   enough that the audio encode is ≲5% of video encode time.
+                //   Fine for "is this the right clip?"; convert still decodes
+                //   the original file for the actual ASCII output.
                 // -movflags +faststart → harmless on blob: URLs, good habit.
                 await ffmpeg.exec([
                     '-i', inputName,
-                    '-vf', "scale='trunc(iw/2)*2':'trunc(ih/2)*2'",
+                    '-vf', "scale=-2:'min(480,ih)'",
                     '-c:v', 'libx264',
                     '-preset', 'ultrafast',
                     '-crf', '30',
                     '-pix_fmt', 'yuv420p',
                     '-c:a', 'aac',
-                    '-b:a', '128k',
+                    '-b:a', '64k',
+                    '-ac', '1',
+                    '-ar', '22050',
                     '-movflags', '+faststart',
                     '-y',
                     outputName,
@@ -1111,16 +1145,41 @@
             // the flags so the new file starts with a clean slate.
             state.previewTranscodeFor = null;
             state.previewIsTranscoded = false;
+            state.fallbackStartedFor = null;
+            if (state.fallbackWatchdog) {
+                clearTimeout(state.fallbackWatchdog);
+                state.fallbackWatchdog = null;
+            }
             const url = URL.createObjectURL(file);
             state.sourceObjectURL = url;
             els.videoPlayer.src = url;
             $('welcomeBox').classList.add('hidden');
-            $('videoBox').classList.remove('hidden');
+            $('sourceRow').classList.remove('hidden');
             els.videoFallbackNotice.classList.add('hidden');
             els.previewBtn.disabled = true;
             els.convertBtn.disabled = true;
             log(`Loaded: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB, ${file.type || 'unknown type'})`);
-            showLog();
+
+            // Firefox watchdog: Firefox's <video> element can take minutes
+            // to fire `error` for codecs it can't decode (MKV without OS
+            // support, HEVC, AV1 without HW decode, etc.), while Chrome
+            // fires it in tens of milliseconds. Without this, the user
+            // stares at a blank player waiting for our ffmpeg fallback to
+            // kick in. If nothing has happened within a short window —
+            // no metadata (readyState >= 1), no error, and we haven't
+            // already routed to the fallback — assume the decoder is
+            // stalled and run the fallback manually.
+            state.fallbackWatchdog = setTimeout(() => {
+                state.fallbackWatchdog = null;
+                if (state.file !== file) return;
+                if (state.fallbackStartedFor === file) return;
+                const v = els.videoPlayer;
+                if (v.readyState >= 1 || v.error) return;
+                runVideoFallback(
+                    file,
+                    `<video> hasn't reported metadata after 3s — Firefox sometimes stalls for minutes on containers/codecs it can't decode rather than firing an error.`
+                );
+            }, 3000);
         };
 
         els.videoPlayer.onloadedmetadata = () => {
@@ -1151,15 +1210,22 @@
                 log('Note: requestVideoFrameCallback not supported by this browser.');
             }
         };
-        els.videoPlayer.onerror = async () => {
-            // Once we've swapped in a transcoded MP4, any further <video>
-            // errors are real problems with the transcode — don't retry,
-            // don't overwrite the (now-stale) fallback notice, don't loop.
-            if (state.previewIsTranscoded) {
-                log('<video> reported an error on the transcoded preview. Leaving current state alone.');
-                return;
+        // Routes a file through the ffmpeg fallback path: probe metadata,
+        // enable Convert, kick off the background preview transcode. Called
+        // both by <video>.onerror (Chrome's fast path) and by the Firefox
+        // watchdog (when <video> stalls without firing error). Guarded so
+        // repeated triggers for the same file are no-ops.
+        async function runVideoFallback(probedFile, reason) {
+            if (!probedFile) return;
+            if (state.fallbackStartedFor === probedFile) return;
+            state.fallbackStartedFor = probedFile;
+
+            if (state.fallbackWatchdog) {
+                clearTimeout(state.fallbackWatchdog);
+                state.fallbackWatchdog = null;
             }
-            log(`<video> can't decode this container/codec. That's expected for MKV/AVI without OS codecs, or for HEVC/AV1 without HW decode. Asking ffmpeg.wasm for metadata, then transcoding a preview in the background.`);
+
+            log(`${reason} Asking ffmpeg.wasm for metadata, then transcoding a preview in the background.`);
             els.videoFallbackNotice.classList.remove('hidden');
             // Preview reads a frame from the <video> element, so it can't work without a browser-decoded source.
             els.previewBtn.disabled = true;
@@ -1167,8 +1233,6 @@
             // without those, extractFramesFFmpeg bails out with a 0×0 grid error.
             els.convertBtn.disabled = true;
 
-            const probedFile = state.file;
-            if (!probedFile) return;
             try {
                 const { duration, width, height } = await probeWithFFmpeg(probedFile);
                 // User may have swapped the file while ffmpeg was loading/probing.
@@ -1204,6 +1268,20 @@
                 // and some codecs can decode even when the probe can't read a header.
                 els.convertBtn.disabled = false;
             }
+        }
+
+        els.videoPlayer.onerror = () => {
+            // Once we've swapped in a transcoded MP4, any further <video>
+            // errors are real problems with the transcode — don't retry,
+            // don't overwrite the (now-stale) fallback notice, don't loop.
+            if (state.previewIsTranscoded) {
+                log('<video> reported an error on the transcoded preview. Leaving current state alone.');
+                return;
+            }
+            runVideoFallback(
+                state.file,
+                `<video> can't decode this container/codec. That's expected for MKV/AVI without OS codecs, or for HEVC/AV1 without HW decode.`
+            );
         };
 
         els.useFullBtn.onclick = () => {
@@ -1253,7 +1331,7 @@
             const startTime = Math.max(0, parseFloat(els.startTime.value) || 0);
             const endTimeRaw = parseFloat(els.endTime.value);
             const endTime = Math.min(state.videoDuration || endTimeRaw || Infinity, endTimeRaw || state.videoDuration || 0);
-            if (!(endTime > startTime)) { alert('Start must be less than end'); return; }
+            if (!(endTime > startTime)) { log('Convert aborted: start must be less than end.'); alert('Start must be less than end'); return; }
 
             state.cancelRequested = false;
             els.convertBtn.disabled = true;
@@ -1611,7 +1689,7 @@
 
         // ==================== Export ====================
         els.exportBtn.onclick = async () => {
-            if (state.frames.length === 0) { alert('Nothing to export'); return; }
+            if (state.frames.length === 0) { log('Export aborted: no frames yet — run Convert first.'); alert('Nothing to export'); return; }
             const fmt = els.exportFormat.value;
             els.exportBtn.disabled = true;
             const origText = els.exportBtn.textContent;
@@ -1886,7 +1964,7 @@ ${dataBlock}
 
             const videoEncoder = new VideoEncoder({
                 output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-                error: (e) => console.error('VideoEncoder error:', e),
+                error: (e) => { log(`VideoEncoder error: ${e.message || e}`); console.error('VideoEncoder error:', e); },
             });
             videoEncoder.configure(videoCfg);
 
