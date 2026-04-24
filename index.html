@@ -3,169 +3,621 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ASCII Video Converter</title>
+    <title>[ASCII] VIDEO CONVERTER</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=VT323&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/mp4-muxer@4.2.0/build/mp4-muxer.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js"></script>
     <style>
         :root {
-            --bg-0: #0f0a1e;
-            --bg-1: #1a1430;
-            --bg-2: rgba(40, 30, 70, 0.5);
-            --bg-3: #2a2040;
-            --bg-4: #1c1530;
-            --fg-0: #ffffff;
-            --fg-1: #c4b5fd;
-            --fg-2: #a78bfa;
-            --fg-3: #9ca3af;
-            --accent: #8b5cf6;
-            --accent-hover: #7c3aed;
-            --green: #10b981;
-            --green-hover: #059669;
-            --blue: #3b82f6;
-            --blue-hover: #2563eb;
-            --amber: #d97706;
-            --amber-hover: #b45309;
-            --pink: #db2777;
-            --pink-hover: #be185d;
-            --gray: #4b5563;
-            --gray-hover: #374151;
-            --border: rgba(255, 255, 255, 0.08);
+            /* Phosphor CRT palette */
+            --bg-void:    #030604;
+            --bg-deep:    #050a06;
+            --bg-panel:   rgba(8, 20, 10, 0.72);
+            --bg-sunken:  #020402;
+            --bg-input:   #061009;
+
+            --phos-hot:   #00ff66;
+            --phos-max:   #c8ffd0;
+            --phos:       #5de676;
+            --phos-mid:   #3fb058;
+            --phos-dim:   #2d7a3d;
+            --phos-low:   #154520;
+            --phos-ghost: rgba(93, 230, 118, 0.07);
+
+            --border:     rgba(93, 230, 118, 0.22);
+            --border-hot: rgba(93, 230, 118, 0.55);
+            --glow-hot:   0 0 16px rgba(0, 255, 100, 0.40);
+            --glow-soft:  0 0 10px rgba(93, 230, 118, 0.18);
+
+            --amber: #ffb347;
+            --red:   #ff5c5c;
+
+            --font-hero: 'VT323', monospace;
+            --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
         }
         * { box-sizing: border-box; }
+
+        html, body { background: var(--bg-void); }
         body {
             margin: 0;
-            padding: 1.5rem;
-            font-family: system-ui, -apple-system, sans-serif;
-            background: linear-gradient(135deg, var(--bg-0), var(--bg-1), var(--bg-0));
-            background-attachment: fixed;
-            color: var(--fg-0);
+            padding: 0 1.25rem 0;
+            font-family: var(--font-mono);
+            font-size: 13px;
+            color: var(--phos);
             min-height: 100vh;
+            line-height: 1.5;
+            background-color: var(--bg-void);
+            background-image:
+                radial-gradient(ellipse 1100px 700px at 50% -200px, rgba(0, 255, 100, 0.08), transparent 60%),
+                radial-gradient(ellipse 900px 500px at 100% 100%, rgba(0, 255, 100, 0.05), transparent 60%),
+                radial-gradient(circle at 1px 1px, rgba(93, 230, 118, 0.055) 1px, transparent 1px);
+            background-size: auto, auto, 24px 24px;
+            background-attachment: fixed;
+            position: relative;
+            overflow-x: hidden;
         }
-        .container { max-width: 80rem; margin: 0 auto; }
-        .header { text-align: center; margin-bottom: 1.5rem; }
-        .header h1 { font-size: 2rem; font-weight: 700; margin: 0 0 0.25rem; }
-        .header p { color: var(--fg-1); font-size: 0.875rem; margin: 0; }
-        .layout { display: grid; grid-template-columns: 1fr; gap: 1.5rem; }
+        /* Scanlines overlay */
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 1000;
+            background: repeating-linear-gradient(
+                180deg,
+                transparent 0 2px,
+                rgba(0, 255, 100, 0.022) 2px 3px
+            );
+            mix-blend-mode: screen;
+        }
+
+        ::selection { background: var(--phos-hot); color: var(--bg-void); }
+
+        /* Scrollbars */
+        * { scrollbar-width: thin; scrollbar-color: var(--phos-dim) transparent; }
+        *::-webkit-scrollbar { width: 10px; height: 10px; }
+        *::-webkit-scrollbar-track { background: transparent; }
+        *::-webkit-scrollbar-thumb {
+            background: var(--phos-low);
+            border: 2px solid var(--bg-void);
+        }
+        *::-webkit-scrollbar-thumb:hover { background: var(--phos-dim); }
+
+        .container { max-width: 86rem; margin: 0 auto; }
+
+        /* ========== Header ========== */
+        .header {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 2rem;
+            align-items: end;
+            padding: 2rem 0 1.25rem;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 1.5rem;
+            position: relative;
+        }
+        .header::after {
+            content: "";
+            position: absolute;
+            left: 0; right: 0; bottom: -3px;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--phos-hot), transparent);
+            opacity: 0.4;
+        }
+        .header-title {
+            font-family: var(--font-hero);
+            font-size: clamp(2.25rem, 5vw, 3.75rem);
+            color: var(--phos-max);
+            text-shadow: 0 0 20px var(--phos-hot), 0 0 2px var(--phos-hot);
+            line-height: 0.9;
+            margin: 0;
+            letter-spacing: 0.03em;
+            font-weight: 400;
+        }
+        .header-title .bracket { color: var(--phos-hot); }
+        .header-title .cursor {
+            display: inline-block;
+            width: 0.45em;
+            height: 0.85em;
+            background: var(--phos-hot);
+            margin-left: 0.12em;
+            vertical-align: -3px;
+            animation: blink 1.05s steps(2) infinite;
+            box-shadow: 0 0 10px var(--phos-hot);
+        }
+        @keyframes blink { 50% { opacity: 0; } }
+
+        .stats-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1.25rem;
+            font-size: 10.5px;
+            color: var(--phos-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            justify-content: flex-end;
+            padding-bottom: 0.3rem;
+        }
+        .stat-cell {
+            display: inline-flex;
+            gap: 0.5rem;
+            align-items: baseline;
+            white-space: nowrap;
+        }
+        .stat-cell .label { color: var(--phos-low); }
+        .stat-cell .value { color: var(--phos); font-variant-numeric: tabular-nums; }
+        .stat-cell .value.on { color: var(--phos-hot); text-shadow: 0 0 6px var(--phos-hot); }
+        .stat-cell .value.off { color: var(--amber); }
+        .stat-cell .value.na { color: var(--phos-low); }
+        @media (max-width: 900px) {
+            .header { grid-template-columns: 1fr; gap: 0.75rem; }
+            .stats-bar { justify-content: flex-start; }
+        }
+
+        /* ========== Layout ========== */
+        .layout {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1rem;
+        }
         @media (min-width: 1024px) { .layout { grid-template-columns: minmax(280px, 340px) 1fr; } }
+
+        /* ========== Panels ========== */
         .panel {
-            background: var(--bg-2);
-            backdrop-filter: blur(8px);
+            position: relative;
+            background: var(--bg-panel);
             border: 1px solid var(--border);
-            border-radius: 0.5rem;
             padding: 1.25rem;
+            border-radius: 0;
+            box-shadow: inset 0 0 40px rgba(0, 255, 100, 0.025);
         }
-        .panel + .panel { margin-top: 1rem; }
-        .section { margin-bottom: 1rem; }
+        /* Corner brackets — top-left and top-right */
+        .panel::before, .panel::after {
+            content: "";
+            position: absolute;
+            width: 10px; height: 10px;
+            pointer-events: none;
+            border-color: var(--phos-hot);
+            border-style: solid;
+        }
+        .panel::before { top: -1px; left: -1px; border-width: 1px 0 0 1px; }
+        .panel::after  { top: -1px; right: -1px; border-width: 1px 1px 0 0; }
+        /* Vertical spacing between stacked panels comes from .stack / grid gap,
+           not from an adjacent-sibling margin. The old `.panel + .panel { margin-top }`
+           rule leaked into the two-column .source-row grid and pushed the log
+           panel down a row-cell relative to the video panel. */
+
+        /* ========== Sections ========== */
+        .section { margin-bottom: 1.25rem; }
+        .section:last-child { margin-bottom: 0; }
         .section + .section {
-            border-top: 1px solid var(--border);
-            padding-top: 1rem;
+            border-top: 1px dashed var(--border);
+            padding-top: 1.25rem;
         }
-        h2 { font-size: 1rem; font-weight: 600; margin: 0 0 0.75rem; }
-        h3 { font-size: 0.875rem; font-weight: 600; margin: 0 0 0.5rem; }
-        label {
-            display: block;
-            color: var(--fg-1);
+
+        h2 {
             font-size: 0.75rem;
-            margin-bottom: 0.25rem;
-        }
-        label .muted { color: var(--fg-3); }
-        input[type="range"] { width: 100%; }
-        input[type="number"], select {
-            width: 100%;
-            background: var(--bg-3);
-            color: var(--fg-0);
-            border: 1px solid var(--border);
-            border-radius: 0.375rem;
-            padding: 0.375rem 0.5rem;
-            font-size: 0.8125rem;
-            font-family: inherit;
-        }
-        input[type="color"] {
-            width: 100%;
-            height: 2.5rem;
-            border: none;
-            background: transparent;
-            cursor: pointer;
-            border-radius: 0.5rem;
-        }
-        .checkbox-row {
+            font-weight: 700;
+            margin: 0 0 0.875rem;
+            color: var(--phos-max);
+            text-transform: uppercase;
+            letter-spacing: 0.14em;
             display: flex;
             align-items: center;
             gap: 0.5rem;
-            cursor: pointer;
-            padding: 0.25rem 0;
         }
-        .checkbox-row input { margin: 0; cursor: pointer; }
-        .checkbox-row span { font-size: 0.8125rem; color: var(--fg-0); }
-        .help-text {
+        h2::before {
+            content: "▍";
+            color: var(--phos-hot);
+            text-shadow: 0 0 6px var(--phos-hot);
+            font-weight: 400;
+        }
+        h3 {
             font-size: 0.6875rem;
-            color: var(--fg-3);
-            line-height: 1.4;
-            margin-top: 0.25rem;
-            padding-left: 1.5rem;
+            font-weight: 700;
+            margin: 0 0 0.75rem;
+            color: var(--phos-max);
+            text-transform: uppercase;
+            letter-spacing: 0.14em;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.5rem;
         }
-        button {
-            width: 100%;
-            border: none;
-            border-radius: 0.5rem;
-            padding: 0.625rem 1rem;
-            font-size: 0.8125rem;
-            font-weight: 600;
-            font-family: inherit;
-            color: white;
-            cursor: pointer;
-            transition: background-color 0.15s;
+        h3::before {
+            content: "▍";
+            color: var(--phos-hot);
+            text-shadow: 0 0 6px var(--phos-hot);
         }
-        button:disabled { background: var(--gray) !important; opacity: 0.5; cursor: not-allowed; }
-        button.btn-sm { padding: 0.375rem 0.5rem; font-size: 0.75rem; font-weight: 500; }
-        button.btn-primary { background: var(--accent); }
-        button.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
-        button.btn-green { background: var(--green); }
-        button.btn-green:hover:not(:disabled) { background: var(--green-hover); }
-        button.btn-blue { background: var(--blue); }
-        button.btn-blue:hover:not(:disabled) { background: var(--blue-hover); }
-        button.btn-amber { background: var(--amber); }
-        button.btn-amber:hover:not(:disabled) { background: var(--amber-hover); }
-        button.btn-pink { background: var(--pink); }
-        button.btn-pink:hover:not(:disabled) { background: var(--pink-hover); }
-        button.btn-gray { background: var(--gray); }
-        button.btn-gray:hover:not(:disabled) { background: var(--gray-hover); }
-        .stack > * + * { margin-top: 0.5rem; }
-        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
-        .mode-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 0.25rem; }
-        .mode-toggle button {
-            padding: 0.375rem 0.5rem;
-            font-size: 0.8125rem;
+        /* When a badge lives inside an h3, push it to the right */
+        h3 > .engine-badge { margin-left: auto; }
+
+        /* ========== Form controls ========== */
+        label {
+            display: block;
+            color: var(--phos-dim);
+            font-size: 0.625rem;
+            text-transform: uppercase;
+            letter-spacing: 0.14em;
+            margin-bottom: 0.4rem;
             font-weight: 500;
         }
-        .mode-toggle .active { background: var(--accent); }
-        .mode-toggle .inactive { background: var(--bg-3); color: var(--fg-1); }
-        .status-line {
-            color: var(--fg-1);
-            font-size: 0.75rem;
-            text-align: center;
-            min-height: 1rem;
-            margin-top: 0.5rem;
-            font-variant-numeric: tabular-nums;
+        label > span:not(.muted) { color: var(--phos-max); }
+        label .muted {
+            color: var(--phos-low);
+            text-transform: none;
+            letter-spacing: 0.02em;
+            font-weight: 300;
         }
-        .welcome { text-align: center; padding: 3rem 2rem; }
-        .welcome .icon { font-size: 3rem; margin-bottom: 1rem; }
-        .welcome h3 { font-size: 1.25rem; font-weight: 600; margin: 0 0 0.5rem; }
-        .welcome p { color: var(--fg-1); font-size: 0.875rem; margin: 0; }
-        video { width: 100%; border-radius: 0.5rem; max-height: 16rem; background: #000; }
-        .video-info { margin-top: 0.5rem; font-size: 0.75rem; color: var(--fg-1); }
-        .video-fallback-notice {
+
+        input[type="number"], select {
+            width: 100%;
+            background: var(--bg-sunken);
+            color: var(--phos-max);
+            border: 1px solid var(--border);
+            border-radius: 0;
+            padding: 0.55rem 0.7rem;
+            font-size: 0.8125rem;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        input[type="number"]:focus, select:focus {
+            border-color: var(--phos-hot);
+            box-shadow: inset 0 0 0 1px var(--phos-hot), var(--glow-soft);
+        }
+        select {
+            appearance: none;
+            -webkit-appearance: none;
+            background-image:
+                linear-gradient(45deg, transparent 50%, var(--phos) 50%),
+                linear-gradient(135deg, var(--phos) 50%, transparent 50%);
+            background-position: calc(100% - 14px) 52%, calc(100% - 10px) 52%;
+            background-size: 4px 4px;
+            background-repeat: no-repeat;
+            padding-right: 1.75rem;
+            cursor: pointer;
+        }
+        select option { background: var(--bg-deep); color: var(--phos-max); }
+
+        input[type="color"] {
+            width: 100%;
+            height: 2.25rem;
+            border: 1px solid var(--border);
+            background: var(--bg-sunken);
+            cursor: pointer;
+            border-radius: 0;
+            padding: 2px;
+        }
+        input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+        input[type="color"]::-webkit-color-swatch { border: none; }
+
+        /* Range */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 1.5rem;
+            background: transparent;
+            cursor: pointer;
+            padding: 0;
+        }
+        input[type="range"]::-webkit-slider-runnable-track {
+            height: 2px;
+            background: var(--phos-low);
+            border: none;
+        }
+        input[type="range"]::-moz-range-track {
+            height: 2px;
+            background: var(--phos-low);
+            border: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            background: var(--phos-hot);
+            border: 1px solid var(--phos-max);
+            border-radius: 0;
+            margin-top: -6px;
+            box-shadow: 0 0 10px var(--phos-hot);
+            transition: transform 0.12s;
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 14px; height: 14px;
+            background: var(--phos-hot);
+            border: 1px solid var(--phos-max);
+            border-radius: 0;
+            box-shadow: 0 0 10px var(--phos-hot);
+        }
+        input[type="range"]:hover::-webkit-slider-thumb { transform: scale(1.15); }
+
+        /* Checkbox */
+        .checkbox-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 0;
+            cursor: pointer;
+            padding: 0.3rem 0;
+            user-select: none;
+        }
+        .checkbox-row input { position: absolute; opacity: 0; pointer-events: none; }
+        .checkbox-row span {
+            font-size: 0.75rem;
+            color: var(--phos-max);
+            line-height: 1.45;
+            position: relative;
+            padding-left: 1.6rem;
+            display: block;
+        }
+        .checkbox-row span::before {
+            content: "[ ]";
+            position: absolute;
+            left: 0;
+            top: 0;
+            color: var(--phos-dim);
+            font-family: var(--font-mono);
+            font-weight: 700;
+            letter-spacing: -0.05em;
+        }
+        .checkbox-row:has(input:checked) span::before {
+            content: "[×]";
+            color: var(--phos-hot);
+            text-shadow: 0 0 6px var(--phos-hot);
+        }
+        /* Locked on — user can't change it (e.g. MT requires cross-origin
+           isolation, which this page doesn't have, so ST is the only option). */
+        .checkbox-row:has(input:disabled) {
+            cursor: not-allowed;
+            opacity: 0.55;
+        }
+        .checkbox-row:has(input:disabled) span {
+            color: var(--phos-dim);
+        }
+        .checkbox-row:has(input:disabled:checked) span::before {
+            color: var(--phos-dim);
+            text-shadow: none;
+        }
+
+        /* Help text */
+        .help-text {
+            font-size: 0.6875rem;
+            color: var(--phos-dim);
+            line-height: 1.55;
             margin-top: 0.5rem;
+            padding: 0.5rem 0 0.5rem 0.875rem;
+            border-left: 1px dashed var(--border);
+        }
+        .help-text.warn {
+            color: var(--amber);
+            border-left-color: var(--amber);
+            padding-left: 0.875rem;
+        }
+        .help-text a {
+            color: var(--phos);
+            text-decoration: none;
+            border-bottom: 1px dotted var(--phos-dim);
+        }
+        .help-text a:hover {
+            color: var(--phos-hot);
+            border-bottom-color: var(--phos-hot);
+        }
+
+        /* ========== Buttons ========== */
+        button {
+            width: 100%;
+            border: 1px solid var(--border-hot);
+            background: transparent;
+            border-radius: 0;
             padding: 0.625rem 0.75rem;
-            border-radius: 0.375rem;
-            background: rgba(139, 92, 246, 0.12);
-            border: 1px solid rgba(139, 92, 246, 0.4);
-            color: var(--fg-0);
-            font-size: 0.75rem;
-            line-height: 1.4;
+            font-size: 0.6875rem;
+            font-weight: 700;
+            font-family: inherit;
+            color: var(--phos-max);
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 0.14em;
+            transition: all 0.14s ease;
+            position: relative;
+            white-space: nowrap;
+            overflow: hidden;
         }
-        .video-fallback-notice strong { color: #c4b5fd; }
-        .ascii-box { background: #000; padding: 0.75rem; border-radius: 0.5rem; }
+        button:disabled { opacity: 0.32; cursor: not-allowed; filter: saturate(0.35); }
+        button:hover:not(:disabled) {
+            background: rgba(0, 255, 100, 0.07);
+            box-shadow: inset 0 0 0 1px var(--phos-hot), 0 0 14px rgba(0, 255, 100, 0.25);
+            color: var(--phos-hot);
+        }
+        button:active:not(:disabled) { background: rgba(0, 255, 100, 0.15); }
+
+        button.btn-primary {
+            background: var(--phos-hot);
+            color: var(--bg-void);
+            border-color: var(--phos-hot);
+            box-shadow: 0 0 14px rgba(0, 255, 100, 0.35);
+            font-weight: 800;
+        }
+        button.btn-primary:hover:not(:disabled) {
+            background: var(--phos-max);
+            color: var(--bg-void);
+            box-shadow: 0 0 22px rgba(0, 255, 100, 0.6);
+        }
+        button.btn-alert {
+            border-color: rgba(255, 92, 92, 0.6);
+            color: var(--red);
+        }
+        button.btn-alert:hover:not(:disabled) {
+            background: rgba(255, 92, 92, 0.08);
+            color: var(--red);
+            box-shadow: inset 0 0 0 1px var(--red), 0 0 14px rgba(255, 92, 92, 0.25);
+        }
+        button.btn-sm { padding: 0.4rem 0.625rem; font-size: 0.625rem; }
+
+        .stack > * + * { margin-top: 0.625rem; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+
+        /* Mode toggle */
+        .mode-toggle {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0;
+            border: 1px solid var(--border-hot);
+        }
+        .mode-toggle button {
+            border: none;
+            padding: 0.55rem 0.5rem;
+            font-size: 0.625rem;
+            background: transparent;
+            color: var(--phos-dim);
+            box-shadow: none !important;
+            letter-spacing: 0.14em;
+        }
+        .mode-toggle button:first-child { border-right: 1px solid var(--border); }
+        .mode-toggle .active {
+            background: var(--phos-hot);
+            color: var(--bg-void);
+        }
+        .mode-toggle .inactive {
+            background: transparent;
+            color: var(--phos-dim);
+        }
+        .mode-toggle .inactive:hover {
+            background: rgba(0, 255, 100, 0.06);
+            color: var(--phos-max);
+        }
+
+        /* Status line — small process-state readout under buttons */
+        .status-line {
+            color: var(--phos);
+            font-size: 0.6875rem;
+            min-height: 1rem;
+            margin-top: 0.75rem;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 0.03em;
+            padding-left: 0.625rem;
+            border-left: 2px solid var(--phos-dim);
+        }
+        .status-line:empty { display: none; }
+
+        /* ========== Welcome / drop zone ========== */
+        .welcome {
+            text-align: left;
+            padding: 2.25rem 2rem;
+            border-style: dashed !important;
+            border-color: var(--border-hot) !important;
+            background:
+                repeating-linear-gradient(45deg, transparent 0 10px, rgba(0, 255, 100, 0.012) 10px 11px),
+                rgba(0, 255, 100, 0.015);
+        }
+        .welcome .icon {
+            font-family: var(--font-hero);
+            font-size: 2.25rem;
+            color: var(--phos-hot);
+            text-shadow: 0 0 14px var(--phos-hot);
+            margin-bottom: 0.75rem;
+            line-height: 1;
+            letter-spacing: 0.08em;
+        }
+        .welcome h3 {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 700;
+            margin: 0 0 0.625rem;
+            color: var(--phos-max);
+            letter-spacing: 0.12em;
+        }
+        .welcome h3::before { content: none; }
+        .welcome p {
+            color: var(--phos-dim);
+            font-size: 0.75rem;
+            margin: 0;
+            max-width: 58ch;
+            line-height: 1.65;
+        }
+
+        /* ========== Video ========== */
+        video {
+            width: 100%;
+            border-radius: 0;
+            max-height: 16rem;
+            background: var(--bg-sunken);
+            outline: 1px solid var(--border);
+            outline-offset: -1px;
+        }
+        .video-info {
+            margin-top: 0.625rem;
+            font-size: 0.6875rem;
+            color: var(--phos-dim);
+            letter-spacing: 0.04em;
+        }
+        .video-fallback-notice {
+            margin-top: 0.625rem;
+            padding: 0.75rem 0.875rem;
+            border-radius: 0;
+            background: rgba(255, 179, 71, 0.06);
+            border-left: 2px solid var(--amber);
+            color: var(--phos-max);
+            font-size: 0.6875rem;
+            line-height: 1.55;
+        }
+        .video-fallback-notice strong { color: var(--amber); }
+        /* <details>-based collapsible variant. Starts open; click the chevron
+           (or the headline) to fold. Native <summary> marker stripped because
+           it doesn't match the phosphor theme. */
+        details.video-fallback-notice { padding: 0; }
+        details.video-fallback-notice > summary {
+            list-style: none;
+            cursor: pointer;
+            padding: 0.75rem 0.875rem;
+            display: flex;
+            align-items: baseline;
+            gap: 0.5rem;
+            user-select: none;
+            color: var(--amber);
+        }
+        details.video-fallback-notice > summary::-webkit-details-marker { display: none; }
+        details.video-fallback-notice > summary::before {
+            content: '▶';
+            display: inline-block;
+            color: var(--amber);
+            font-size: 0.625rem;
+            transition: transform 0.15s ease;
+            flex: none;
+            width: 0.75em;
+        }
+        details.video-fallback-notice[open] > summary::before { transform: rotate(90deg); }
+        details.video-fallback-notice > summary:hover { background: rgba(255, 179, 71, 0.08); }
+        details.video-fallback-notice > summary strong { color: var(--amber); }
+        details.video-fallback-notice > .fallback-body {
+            padding: 0 0.875rem 0.875rem 1.95rem; /* align body text under summary headline */
+            color: var(--phos-max);
+        }
+        details.video-fallback-notice > .fallback-body p:first-child { margin-top: 0; }
+        details.video-fallback-notice > .fallback-body p:last-child { margin-bottom: 0; }
+
+        /* ASCII output */
+        .ascii-box {
+            background: var(--bg-sunken);
+            border: 1px solid var(--border);
+            padding: 1rem 1rem 1.25rem;
+            border-radius: 0;
+            position: relative;
+            box-shadow: inset 0 0 40px rgba(0, 255, 100, 0.03);
+        }
+        .ascii-box::before, .ascii-box::after {
+            content: "";
+            position: absolute;
+            width: 10px; height: 10px;
+            pointer-events: none;
+            border-color: var(--phos-hot);
+            border-style: solid;
+        }
+        .ascii-box::before { top: -1px; left: -1px; border-width: 1px 0 0 1px; }
+        .ascii-box::after  { top: -1px; right: -1px; border-width: 1px 1px 0 0; }
+        .ascii-box h3 { color: var(--phos-max); margin-bottom: 0.875rem; }
+
         canvas.preview {
             image-rendering: pixelated;
             image-rendering: crisp-edges;
@@ -173,20 +625,42 @@
             height: auto;
             display: block;
             background: #000;
+            margin: 0 auto;
         }
+
         .hidden { display: none !important; }
+
+        /* ========== Log ========== */
         .log {
-            background: var(--bg-4);
-            border-radius: 0.375rem;
-            padding: 0.5rem;
-            font-family: "SF Mono", Menlo, monospace;
+            background: var(--bg-sunken);
+            border: 1px solid var(--border);
+            padding: 0.75rem 0.875rem;
+            font-family: var(--font-mono);
             font-size: 0.6875rem;
-            color: var(--fg-1);
+            color: var(--phos);
             overflow-y: auto;
             white-space: pre-wrap;
-            flex: 1;
-            min-height: 10rem;
+            word-break: break-word;
+            flex: 1 1 0;
+            min-height: 0;
+            line-height: 1.6;
+            border-radius: 0;
+            position: relative;
         }
+        .log .log-line { display: block; }
+        .log .log-time { color: var(--phos-low); margin-right: 0.5rem; }
+        .log .log-line.log-warn    { color: var(--amber); }
+        .log .log-line.log-err     { color: var(--red); }
+        .log .log-line.log-ffmpeg  { color: var(--phos-dim); }
+        .log .log-line.log-ok      { color: var(--phos-hot); text-shadow: 0 0 4px var(--phos-hot); }
+        .log .log-line:last-child::after {
+            content: "_";
+            color: var(--phos-hot);
+            animation: blink 1.05s steps(2) infinite;
+            margin-left: 2px;
+            text-shadow: 0 0 6px var(--phos-hot);
+        }
+
         .source-row {
             display: grid;
             grid-template-columns: 1fr;
@@ -194,34 +668,123 @@
             align-items: stretch;
         }
         @media (min-width: 900px) {
-            .source-row { grid-template-columns: 1fr 1fr; }
+            .source-row:has(> #videoBox:not(.hidden)) {
+                grid-template-columns: 1fr 1fr;
+            }
         }
         .source-row > .panel {
             display: flex;
             flex-direction: column;
             min-width: 0;
+            min-height: 0;
         }
-        .log-panel { min-height: 18rem; }
+        /* Fixed height means .log's flex parent is bounded, so its
+           overflow-y: auto actually triggers instead of pushing the row taller. */
+        .log-panel { height: 22rem; }
+
+        /* Engine badge */
         .engine-badge {
-            display: inline-block;
-            padding: 0.125rem 0.375rem;
-            border-radius: 0.25rem;
+            display: inline-flex;
+            align-items: center;
+            padding: 0.15rem 0.5rem;
+            border: 1px solid var(--border-hot);
+            border-radius: 0;
             font-size: 0.625rem;
-            font-weight: 600;
+            font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 0.05em;
+            letter-spacing: 0.14em;
             margin-left: 0.5rem;
+            font-family: var(--font-mono);
         }
-        .engine-badge.browser { background: rgba(16, 185, 129, 0.25); color: #6ee7b7; }
-        .engine-badge.ffmpeg  { background: rgba(219, 39, 119, 0.25); color: #f9a8d4; }
+        .engine-badge:empty { display: none; }
+        .engine-badge.browser {
+            color: var(--phos-hot);
+            border-color: var(--phos-hot);
+            text-shadow: 0 0 4px var(--phos-hot);
+        }
+        .engine-badge.ffmpeg {
+            color: var(--amber);
+            border-color: var(--amber);
+        }
+
+        /* ========== Footer ========== */
+        .footer {
+            margin-top: 1.75rem;
+            padding: 1rem 0 1.25rem;
+            border-top: 1px solid var(--border);
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            gap: 1.25rem;
+            align-items: center;
+            font-size: 0.6875rem;
+            color: var(--phos-dim);
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            position: relative;
+        }
+        .footer::before {
+            content: "";
+            position: absolute;
+            left: 0; right: 0; top: -3px;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--phos-hot), transparent);
+            opacity: 0.3;
+        }
+        .footer-prompt {
+            color: var(--phos-max);
+            font-size: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            letter-spacing: 0.08em;
+        }
+        .footer-prompt .chev {
+            color: var(--phos-hot);
+            text-shadow: 0 0 6px var(--phos-hot);
+        }
+        .footer-prompt .status { color: var(--phos); }
+        .footer-prompt::after {
+            content: "_";
+            color: var(--phos-hot);
+            animation: blink 1.05s steps(2) infinite;
+            margin-left: 2px;
+            text-shadow: 0 0 6px var(--phos-hot);
+        }
+        .footer-ticker {
+            color: var(--phos-low);
+            font-size: 0.625rem;
+            text-align: center;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            opacity: 0.75;
+        }
+        .footer-meta {
+            display: flex;
+            gap: 1.1rem;
+            color: var(--phos-low);
+            align-items: center;
+        }
+        .footer-meta a {
+            color: var(--phos-dim);
+            text-decoration: none;
+            border-bottom: 1px dotted var(--phos-low);
+            padding-bottom: 1px;
+        }
+        .footer-meta a:hover { color: var(--phos-hot); border-bottom-color: var(--phos-hot); }
+        .footer-meta .divider { color: var(--phos-low); opacity: 0.5; }
+        @media (max-width: 700px) {
+            .footer { grid-template-columns: 1fr; gap: 0.6rem; text-align: left; }
+            .footer-ticker { text-align: left; }
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h1>ASCII Video Converter</h1>
-            <p>Browser-fast path · ffmpeg.wasm fallback · Color or monochrome · MP4/GIF/Shell export</p>
-        </div>
+        <header class="header">
+            <h1 class="header-title"><span class="bracket">[</span>ASCII<span class="bracket">]</span> VIDEO CONVERTER<span class="cursor"></span></h1>
+            <div id="statsBar" class="stats-bar" aria-live="polite"></div>
+        </header>
 
         <div class="layout">
             <!-- Controls -->
@@ -272,17 +835,17 @@
                                 <input type="number" id="endTime" min="0" step="0.1">
                             </div>
                         </div>
-                        <button id="useFullBtn" class="btn-gray btn-sm" style="margin-top: 0.5rem;">Use Full Video</button>
-                        <div id="chunkWarning" class="help-text hidden" style="color: #fbbf24; padding-left: 0;"></div>
+                        <button id="useFullBtn" class="btn-sm" style="margin-top: 0.625rem;">Use Full Video</button>
+                        <div id="chunkWarning" class="help-text warn hidden"></div>
                     </div>
 
                     <div class="section">
                         <div class="stack">
                             <input type="file" id="fileInput" accept="video/*" class="hidden">
-                            <button id="uploadBtn" class="btn-primary">📤 Upload Video</button>
-                            <button id="previewBtn" class="btn-amber" disabled>👁 Preview Current Frame</button>
-                            <button id="convertBtn" class="btn-green" disabled>🎨 Convert Full Range</button>
-                            <button id="cancelBtn" class="btn-gray hidden">✖ Cancel</button>
+                            <button id="uploadBtn" class="btn-primary">▲ UPLOAD VIDEO</button>
+                            <button id="previewBtn" disabled>◉ PREVIEW FRAME</button>
+                            <button id="convertBtn" class="btn-primary" disabled>▶▶ CONVERT RANGE</button>
+                            <button id="cancelBtn" class="btn-alert hidden">✕ CANCEL</button>
                         </div>
                         <label class="checkbox-row" style="margin-top: 0.5rem;">
                             <input type="checkbox" id="preferBrowser">
@@ -295,15 +858,28 @@
                             Best for short clips; some codecs (HEVC, AV1 without HW decode) may
                             fall back to ffmpeg automatically.
                         </div>
+                        <label class="checkbox-row" style="margin-top: 0.5rem;">
+                            <input type="checkbox" id="forceSTCheckbox">
+                            <span>Force single-threaded ffmpeg</span>
+                        </label>
+                        <div class="help-text">
+                            Auto-enabled when Chromium hangs on multi-threaded decode
+                            (<a href="https://github.com/ffmpegwasm/ffmpeg.wasm/issues/772"
+                                target="_blank" rel="noopener">ffmpeg.wasm #772</a>,
+                            open since 2023). We watchdog the first 10s of every decode; if
+                            no frames land, we flip this on and remember it for next time.
+                            Uncheck to retry multi-threading (e.g. after the upstream bug
+                            is fixed, or on a different machine).
+                        </div>
                         <div id="progress" class="status-line"></div>
                     </div>
 
                     <div id="playbackBox" class="section hidden">
                         <h2>Playback</h2>
                         <div class="stack">
-                            <div style="display: flex; gap: 0.25rem;">
-                                <button id="playBtn" class="btn-blue" style="flex: 1;">▶ Play</button>
-                                <button id="resetBtn" class="btn-gray" style="width: auto; padding: 0.5rem 0.75rem;">⏮</button>
+                            <div style="display: flex; gap: 0.375rem;">
+                                <button id="playBtn" style="flex: 1;">▶ PLAY</button>
+                                <button id="resetBtn" style="width: auto; padding: 0.55rem 0.85rem;">⏮</button>
                             </div>
                             <input type="range" id="scrubber" min="0" max="0" value="0">
                             <div id="frameCounter" class="status-line"></div>
@@ -314,7 +890,9 @@
                         <h2>Export</h2>
                         <div class="stack">
                             <select id="exportFormat">
-                                <option value="txt">Current Frame (.txt)</option>
+                                <option value="txt">Current Frame · Plain (.txt)</option>
+                                <option value="ans">Current Frame · ANSI colored (.ans)</option>
+                                <option value="gif-single">Current Frame · Image (.gif)</option>
                                 <option value="sh">Terminal Animation (.sh)</option>
                                 <option value="mp4">MP4 Video</option>
                                 <option value="gif">Animated GIF</option>
@@ -330,12 +908,13 @@
                                     <span>Include audio</span>
                                 </label>
                                 <div class="help-text">
-                                    If the browser can't decode the source audio (common for
-                                    MKV/AVI), ffmpeg.wasm will be loaded to extract it (~30MB
-                                    one-time download).
+                                    Tries the browser's native audio decoder first, falls
+                                    back to ffmpeg.wasm when it can't read the container
+                                    (common for MKV/AVI). ffmpeg is already loaded by the
+                                    time you reach Export, so this is fast.
                                 </div>
                             </div>
-                            <button id="exportBtn" class="btn-pink">💾 Export</button>
+                            <button id="exportBtn" class="btn-primary">↓ EXPORT</button>
                         </div>
                         <div id="exportProgress" class="status-line"></div>
                     </div>
@@ -345,18 +924,15 @@
             <!-- Display -->
             <div>
                 <div class="stack">
-                    <div id="sourceRow" class="source-row hidden">
-                        <div id="videoBox" class="panel">
+                    <div id="sourceRow" class="source-row">
+                        <div id="videoBox" class="panel hidden">
                             <h3>Source Video</h3>
                             <video id="videoPlayer" controls></video>
                             <div id="videoInfo" class="video-info"></div>
-                            <div id="videoFallbackNotice" class="video-fallback-notice hidden">
-                                <strong>Your browser can't preview this container natively</strong> — likely MKV/AVI
-                                without OS codecs, or HEVC/AV1 without hardware decode. ffmpeg.wasm is reading the
-                                duration and dimensions first, then transcoding a preview in the background so you
-                                can watch the source. Set Start/End and click <strong>Convert Full Range</strong>
-                                whenever — you don't have to wait for the preview to finish.
-                            </div>
+                            <details id="videoFallbackNotice" class="video-fallback-notice hidden" open>
+                                <summary><strong>This browser can't play this container/codec.</strong></summary>
+                                <div class="fallback-body"></div>
+                            </details>
                         </div>
                         <div id="logPanel" class="panel log-panel">
                             <h3>Log</h3>
@@ -365,18 +941,33 @@
                     </div>
 
                     <div id="asciiBox" class="ascii-box hidden">
-                        <h3 style="color: white;">ASCII Output <span id="engineBadge"></span></h3>
+                        <h3>ASCII OUTPUT <span id="engineBadge"></span></h3>
                         <canvas id="displayCanvas" class="preview"></canvas>
                     </div>
 
                     <div id="welcomeBox" class="panel welcome">
-                        <div class="icon">📹</div>
-                        <h3>Upload a video to get started</h3>
-                        <p>MP4, MKV, AVI, WebM — ffmpeg.wasm handles decoding for you (one-time ~30MB download on first convert). Browser engine is an opt-in checkbox for short clips.</p>
+                        <div class="icon">&gt; NO SOURCE</div>
+                        <h3>WAITING FOR INPUT</h3>
+                        <p>Drop a video on the UPLOAD button above. MP4, MKV, AVI, WebM — ffmpeg.wasm handles decoding for you (one-time ~30MB download on first convert). Browser engine is an opt-in checkbox for short clips; it lets you watch the source play during conversion.</p>
                     </div>
                 </div>
             </div>
         </div>
+
+        <footer class="footer">
+            <div class="footer-prompt">
+                <span class="chev">&gt;</span>
+                <span class="status" id="footerStatus">READY</span>
+            </div>
+            <div id="footerTicker" class="footer-ticker"></div>
+            <div class="footer-meta">
+                <span id="footerSession">SESSION 00:00</span>
+                <span class="divider">│</span>
+                <span id="footerFrames">FRAMES 0</span>
+                <span class="divider">│</span>
+                <span id="footerBuild">BUILD · PHOSPHOR</span>
+            </div>
+        </footer>
     </div>
 
     <script>
@@ -419,6 +1010,220 @@
         const FFMPEG_CORE_ST_BASE = 'https://unpkg.com/@ffmpeg/core@0.12.3/dist/umd';
         const FFMPEG_CORE_MT_BASE = 'https://unpkg.com/@ffmpeg/core-mt@0.12.3/dist/umd';
 
+        // MT→ST fallback. @ffmpeg/core-mt@0.12.3 reliably deadlocks on HEVC
+        // decode in Chromium browsers (the native decoder's frame-thread pool
+        // never produces a first frame). Rather than force ST everywhere on
+        // Chromium — most codecs work fine MT there — we start with MT and
+        // let a stall watchdog catch the deadlock: if 30s pass with zero
+        // frames decoded, we terminate the worker and retry with ST.
+        // Sticky for the session so subsequent converts don't pay the probe.
+
+        // =============== FFmpeg-in-a-Worker proxy ================
+        // Host FFmpeg inside a dedicated Web Worker rather than on the main
+        // thread. Rationale: Chromium throws TypeError on Atomics.wait() from
+        // the page main thread (Chrome 87+), which the @ffmpeg/ffmpeg@0.12
+        // manager's SAB-backed synchronization paths can hit during MT HEVC
+        // decode init. Worker threads can call Atomics.wait freely. Firefox
+        // already works because it's historically permissive here; this
+        // change brings Chromium to parity without changing the public
+        // ffmpeg.on/.exec/.writeFile/etc. API surface the rest of the code
+        // calls. The worker does fetch/patch/importScripts/load itself; we
+        // pass the URL bases in via the `load` message.
+        const FFMPEG_WORKER_SRC = `
+'use strict';
+
+// @ffmpeg/ffmpeg ships as a webpack UMD bundle. Its runtime chunk-loading
+// code reads document.currentScript.src to compute publicPath, and a few
+// emscripten init paths probe 'document' / 'window' without a typeof guard.
+// Neither exists in a Dedicated Worker, so importScripts() throws
+// "document is not defined" before ffmpeg ever loads. Minimal shim: just
+// enough surface for the unguarded reads, not a DOM.
+if (typeof self.document === 'undefined') {
+    self.document = {
+        currentScript: { src: (self.location && self.location.href) || '' },
+        getElementsByTagName: function () { return []; },
+        createElement: function () { return { style: {}, setAttribute: function () {}, appendChild: function () {} }; },
+        head: { appendChild: function () {} },
+        body: null,
+    };
+}
+if (typeof self.window === 'undefined') {
+    self.window = self;
+}
+
+let ffmpeg = null;
+
+async function toBlobURL(url, mimeType) {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('fetch ' + url + ' -> HTTP ' + r.status);
+    const b = new Blob([await r.blob()], { type: mimeType });
+    return URL.createObjectURL(b);
+}
+
+async function doLoad(cfg) {
+    const { FFMPEG_BASE, coreBase, mt } = cfg;
+    const rawResp = await fetch(FFMPEG_BASE + '/ffmpeg.js');
+    if (!rawResp.ok) throw new Error('fetch ffmpeg.js -> HTTP ' + rawResp.status);
+    let js = await rawResp.text();
+    const pattern = 'new URL(e.p+e.u(814),e.b)';
+    if (js.indexOf(pattern) >= 0) {
+        js = js.split(pattern).join('r.workerLoadURL');
+    } else {
+        self.postMessage({ type: 'log', level: 'warn',
+            message: 'WARNING: ffmpeg.js chunk-814 patch pattern not found; worker may misbehave.' });
+    }
+    const ffmpegBlobURL = URL.createObjectURL(new Blob([js], { type: 'text/javascript' }));
+    importScripts(ffmpegBlobURL);
+    if (!self.FFmpegWASM || !self.FFmpegWASM.FFmpeg) {
+        throw new Error('FFmpegWASM global not defined after importScripts.');
+    }
+
+    ffmpeg = new self.FFmpegWASM.FFmpeg();
+    ffmpeg.on('log', function (evt) {
+        const m = evt && evt.message ? evt.message : '';
+        // Drop swscaler per-frame spam before it hits postMessage —
+        // otherwise it's thousands of identical lines per second.
+        if (m.indexOf('No accelerated colorspace conversion found') >= 0) return;
+        self.postMessage({ type: 'log', level: evt.type, message: m });
+    });
+    ffmpeg.on('progress', function (evt) {
+        self.postMessage({ type: 'progress', progress: evt.progress });
+    });
+
+    const loadCfg = {
+        workerLoadURL: await toBlobURL(FFMPEG_BASE + '/814.ffmpeg.js', 'text/javascript'),
+        coreURL: await toBlobURL(coreBase + '/ffmpeg-core.js', 'text/javascript'),
+        wasmURL: await toBlobURL(coreBase + '/ffmpeg-core.wasm', 'application/wasm'),
+    };
+    if (mt) {
+        loadCfg.workerURL = await toBlobURL(coreBase + '/ffmpeg-core.worker.js', 'application/javascript');
+    }
+    await ffmpeg.load(loadCfg);
+}
+
+self.onmessage = async function (e) {
+    const data = e.data || {};
+    const id = data.id, type = data.type, payload = data.payload;
+    try {
+        switch (type) {
+            case 'load':
+                await doLoad(payload);
+                self.postMessage({ id, ok: true });
+                break;
+            case 'exec':
+                await ffmpeg.exec(payload);
+                self.postMessage({ id, ok: true });
+                break;
+            case 'writeFile':
+                await ffmpeg.writeFile(payload.name, payload.data);
+                self.postMessage({ id, ok: true });
+                break;
+            case 'readFile': {
+                const out = await ffmpeg.readFile(payload.name);
+                // Copy into a fresh buffer we can transfer zero-copy.
+                const copy = new Uint8Array(out.byteLength);
+                copy.set(out);
+                self.postMessage({ id, ok: true, result: copy }, [copy.buffer]);
+                break;
+            }
+            case 'deleteFile':
+                await ffmpeg.deleteFile(payload.name);
+                self.postMessage({ id, ok: true });
+                break;
+            default:
+                throw new Error('unknown op: ' + type);
+        }
+    } catch (err) {
+        const msg = err && err.message ? err.message : String(err);
+        self.postMessage({ id, ok: false, error: msg });
+    }
+};
+`;
+
+        function createFFmpegWorkerProxy() {
+            const blob = new Blob([FFMPEG_WORKER_SRC], { type: 'application/javascript' });
+            const workerURL = URL.createObjectURL(blob);
+            const worker = new Worker(workerURL);
+
+            let nextId = 1;
+            const pending = new Map();
+            const logListeners = [];
+            const progressListeners = [];
+
+            worker.onmessage = (e) => {
+                const msg = e.data;
+                if (!msg) return;
+                if (msg.type === 'log') {
+                    for (const fn of logListeners) fn({ type: msg.level, message: msg.message });
+                    return;
+                }
+                if (msg.type === 'progress') {
+                    for (const fn of progressListeners) fn({ progress: msg.progress });
+                    return;
+                }
+                if (typeof msg.id === 'number') {
+                    const h = pending.get(msg.id);
+                    if (!h) return;
+                    pending.delete(msg.id);
+                    if (msg.ok) h.resolve(msg.result);
+                    else h.reject(new Error(msg.error));
+                }
+            };
+            worker.onerror = (e) => {
+                const err = new Error('ffmpeg worker crashed: ' + (e.message || 'unknown'));
+                for (const h of pending.values()) h.reject(err);
+                pending.clear();
+            };
+
+            function call(type, payload, transfer) {
+                const id = nextId++;
+                return new Promise((resolve, reject) => {
+                    pending.set(id, { resolve, reject });
+                    try {
+                        worker.postMessage({ id, type, payload }, transfer || []);
+                    } catch (err) {
+                        pending.delete(id);
+                        reject(err);
+                    }
+                });
+            }
+
+            return {
+                load: (cfg) => call('load', cfg),
+                exec: (args) => call('exec', args),
+                writeFile: (name, data) => {
+                    // Zero-copy the big source buffers (234MB MKVs otherwise
+                    // copy on postMessage). Caller agrees not to touch `data`
+                    // after this returns.
+                    if (data instanceof Uint8Array && data.buffer && !data.buffer.detached) {
+                        return call('writeFile', { name, data }, [data.buffer]);
+                    }
+                    return call('writeFile', { name, data });
+                },
+                readFile: (name) => call('readFile', { name }),
+                deleteFile: (name) => call('deleteFile', { name }),
+                on: (event, fn) => {
+                    if (event === 'log') logListeners.push(fn);
+                    else if (event === 'progress') progressListeners.push(fn);
+                },
+                off: (event, fn) => {
+                    const list = event === 'log' ? logListeners
+                               : event === 'progress' ? progressListeners
+                               : null;
+                    if (!list) return;
+                    const i = list.indexOf(fn);
+                    if (i >= 0) list.splice(i, 1);
+                },
+                terminate: () => {
+                    const err = new Error('ffmpeg worker terminated');
+                    for (const h of pending.values()) h.reject(err);
+                    pending.clear();
+                    worker.terminate();
+                    try { URL.revokeObjectURL(workerURL); } catch (_) {}
+                },
+            };
+        }
+
         // ==================== State ====================
         const state = {
             file: null,
@@ -452,11 +1257,16 @@
             // background so the user gets a watchable preview. The original
             // file is still what we decode for the ASCII convert pass.
             sourceObjectURL: null,       // blob: URL from the raw file, held so we can revoke
-            previewBlobURL: null,        // blob: URL from the transcoded MP4, held so we can revoke
-            previewTranscodeFor: null,   // the File object a transcode is currently running for
-            previewIsTranscoded: false,  // videoPlayer.src is the re-encoded MP4, not the original
-            fallbackStartedFor: null,    // File we've already routed to the ffmpeg fallback — don't re-trigger
+            fallbackStartedFor: null,    // File we've already routed to the ffmpeg metadata probe — don't re-trigger
             fallbackWatchdog: null,      // setTimeout handle for the Firefox-stall watchdog
+            // Sticky across reloads — if a previous session's MT attempt
+            // stalled, skip the 10s probe and go straight to ST. Cleared
+            // by removing the localStorage key.
+            forceSingleThreaded: (() => {
+                try { return localStorage.getItem('asciiVideoConverter.forceSingleThreaded') === '1'; }
+                catch (e) { return false; }
+            })(),
+            mtStallTriggered: false,     // transient: set by the stall watchdog to signal "retry"
         };
 
         // ==================== DOM Refs ====================
@@ -480,21 +1290,207 @@
 
         // ==================== Logging ====================
         const MAX_LOG_LINES = 400;
-        const logLines = [];
+        function classifyLog(msg) {
+            const s = msg.toLowerCase();
+            if (s.startsWith('ffmpeg[')) return 'log-ffmpeg';
+            if (s.startsWith('warning') || s.includes(' warning') || s.startsWith('warn')) return 'log-warn';
+            if (s.includes('failed') || s.includes('error') || s.includes(' aborted')) return 'log-err';
+            if (s.startsWith('done:') || s.endsWith(' ready.') || s.includes('exported') || s.startsWith('loaded:')) return 'log-ok';
+            return '';
+        }
         function log(msg) {
             const t = new Date().toLocaleTimeString();
-            const line = `[${t}] ${msg}`;
-            logLines.push(line);
-            if (logLines.length > MAX_LOG_LINES) logLines.shift();
-            els.logBox.textContent = logLines.join('\n');
-            els.logBox.scrollTop = els.logBox.scrollHeight;
-            console.log(line);
+            console.log(`[${t}] ${msg}`);
+            const box = els.logBox;
+            if (!box) return;
+            while (box.childElementCount >= MAX_LOG_LINES && box.firstChild) {
+                box.removeChild(box.firstChild);
+            }
+            const line = document.createElement('div');
+            line.className = 'log-line ' + classifyLog(msg);
+            const tSpan = document.createElement('span');
+            tSpan.className = 'log-time';
+            tSpan.textContent = `[${t}]`;
+            line.appendChild(tSpan);
+            line.appendChild(document.createTextNode(msg));
+            box.appendChild(line);
+            box.scrollTop = box.scrollHeight;
         }
-        // The log lives inside #sourceRow now, so revealing the source row
-        // takes care of showing it. Kept as a named helper so callers that
-        // want logs visible before a file is chosen (e.g. ffmpeg bootstrap
-        // triggered by export) still work.
-        function showLog() { $('sourceRow').classList.remove('hidden'); }
+        // The log panel is visible from page load. Kept as a no-op helper
+        // so older callers still work.
+        function showLog() { /* always visible */ }
+
+        // ==================== ffmpeg progress heartbeat ====================
+        // ffmpeg.wasm's built-in `progress` event is flaky cross-browser
+        // (notably quiet in Chrome's MT worker). We also filter ffmpeg's own
+        // `frame=/time=` stderr spam out of the UI log because it'd drown it.
+        // Net result before this: during a long HEVC decode the user sees
+        // "Decoding with ffmpeg..." for minutes with no visible heartbeat.
+        //
+        // Instead: parse frame=/time= lines in the log handler into a shared
+        // job record, then a 500ms ticker paints a frame-count + elapsed-time
+        // (+ % when duration is known) progress string. The ticker runs only
+        // while a job is active, so when ffmpeg truly stalls the elapsed clock
+        // keeps ticking but `frames`/`time` stop — making "slow" vs "stuck"
+        // visible in the UI.
+        // 10s: a healthy MT decode produces its first `frame=` line in ~2s
+        // (Firefox's MT HEVC was 151 fps / 4.89× realtime). Zero frames after
+        // 10s is the MT-deadlock fingerprint. Used to be 30s; shrinking it
+        // saves 20s on every first convert in a browser that can't do MT.
+        const MT_STALL_THRESHOLD_MS = 10000;
+        let _ffmpegJob = null;
+        function startFFmpegJob(label, duration, opts) {
+            stopFFmpegJob();
+            _ffmpegJob = {
+                label, duration: duration || 0,
+                startMs: performance.now(),
+                frame: 0, timeS: 0, speed: '',
+                stallable: !!(opts && opts.stallable),  // decode: yes; export/probe: no
+                stallRecoveryTriggered: false,
+                tick: setInterval(renderFFmpegJobProgress, 500),
+            };
+            renderFFmpegJobProgress();
+        }
+        function stopFFmpegJob() {
+            if (_ffmpegJob) {
+                clearInterval(_ffmpegJob.tick);
+                _ffmpegJob = null;
+            }
+        }
+        function renderFFmpegJobProgress() {
+            if (!_ffmpegJob) return;
+            const el = $('progress');
+            if (!el) return;
+            const elapsed = ((performance.now() - _ffmpegJob.startMs) / 1000).toFixed(0);
+            const parts = [`ffmpeg: ${_ffmpegJob.label}`];
+            if (_ffmpegJob.duration > 0 && _ffmpegJob.timeS > 0) {
+                const pct = Math.min(100, Math.round(_ffmpegJob.timeS / _ffmpegJob.duration * 100));
+                parts.push(`${pct}%`);
+            }
+            if (_ffmpegJob.frame > 0) parts.push(`${_ffmpegJob.frame} frames`);
+            if (_ffmpegJob.speed) parts.push(_ffmpegJob.speed);
+            parts.push(`elapsed ${elapsed}s`);
+            el.textContent = parts.join(' · ');
+
+            // Stall watchdog: MT pthread pool occasionally deadlocks on
+            // Chromium for HEVC decode. 30s with zero frames is the tell.
+            // Terminate the worker → current exec rejects → extractFramesFFmpeg
+            // catches, sets forceSingleThreaded for the session, and retries.
+            if (
+                _ffmpegJob.stallable &&
+                !_ffmpegJob.stallRecoveryTriggered &&
+                _ffmpegJob.frame === 0 &&
+                !state.forceSingleThreaded &&
+                (performance.now() - _ffmpegJob.startMs) >= MT_STALL_THRESHOLD_MS
+            ) {
+                _ffmpegJob.stallRecoveryTriggered = true;
+                triggerMTStallRecovery();
+            }
+        }
+        function triggerMTStallRecovery() {
+            log(`WARNING: ${MT_STALL_THRESHOLD_MS / 1000}s elapsed with 0 frames decoded — assuming MT pthread deadlock. Terminating ffmpeg worker and falling back to single-threaded core for this session.`);
+            state.forceSingleThreaded = true;
+            state.mtStallTriggered = true;
+            // Remember this browser can't do MT so subsequent converts skip
+            // the doomed 10s probe. User can clear via devtools / site data
+            // if they want to re-test MT later.
+            try { localStorage.setItem('asciiVideoConverter.forceSingleThreaded', '1'); } catch (e) { /* quota, private mode, etc. */ }
+            // Flip the header bar + the Force-ST checkbox right now instead
+            // of waiting for the 2s stats-bar refresh — the mode just
+            // changed, show it (and keep the checkbox UI honest about
+            // what's actually in effect).
+            try { renderStatsBar(); } catch (e) { /* ignore */ }
+            try {
+                const stBox = document.getElementById('forceSTCheckbox');
+                if (stBox) stBox.checked = true;
+            } catch (e) { /* ignore */ }
+            try { state.ffmpegInstance && state.ffmpegInstance.terminate(); } catch (e) { /* ignore */ }
+            state.ffmpegInstance = null;
+            state.ffmpegLoadingPromise = null;
+            state.ffmpegInputName = null;
+            state.ffmpegInputSize = 0;
+        }
+        function ingestFFmpegStderr(message) {
+            if (!_ffmpegJob) return false;
+            const fm = message.match(/frame=\s*(\d+)/);
+            const tm = message.match(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/);
+            const sm = message.match(/speed=\s*([\d.]+x)/);
+            if (!fm && !tm) return false;
+            if (fm) _ffmpegJob.frame = parseInt(fm[1]);
+            if (tm) _ffmpegJob.timeS = parseInt(tm[1]) * 3600 + parseInt(tm[2]) * 60 + parseFloat(tm[3]);
+            if (sm) _ffmpegJob.speed = sm[1];
+            renderFFmpegJobProgress();
+            return true;
+        }
+
+        // ==================== Header stats + footer ====================
+        // Firefox doesn't expose performance.memory or navigator.deviceMemory,
+        // so treat both as optional and render "N/A" rather than breaking.
+        const _sessionStart = Date.now();
+        function fmtMB(bytes) { return `${Math.round(bytes / 1048576)}`; }
+        function fmtSession() {
+            const s = Math.floor((Date.now() - _sessionStart) / 1000);
+            const h = Math.floor(s / 3600);
+            const m = Math.floor((s % 3600) / 60);
+            const ss = s % 60;
+            const pad = (n) => String(n).padStart(2, '0');
+            return h > 0 ? `${pad(h)}:${pad(m)}:${pad(ss)}` : `${pad(m)}:${pad(ss)}`;
+        }
+        function renderStatsBar() {
+            const bar = document.getElementById('statsBar');
+            if (!bar) return;
+            const cores = navigator.hardwareConcurrency || null;
+            const devMem = navigator.deviceMemory ? `${navigator.deviceMemory} GB` : null;
+            const isolated = !!window.crossOriginIsolated;
+            // Reflect the *effective* mode so the header flips from MT → ST
+            // the moment the stall watchdog sticks forceSingleThreaded.
+            const mt = isolated && !state.forceSingleThreaded;
+            const mem = (performance && performance.memory)
+                ? `${fmtMB(performance.memory.usedJSHeapSize)} / ${fmtMB(performance.memory.jsHeapSizeLimit)} MB`
+                : null;
+            const cell = (label, value, cls = '') => {
+                const v = value === null ? '<span class="value na">N/A</span>'
+                    : `<span class="value ${cls}">${value}</span>`;
+                return `<span class="stat-cell"><span class="label">${label}</span>${v}</span>`;
+            };
+            bar.innerHTML = [
+                cell('CORES', cores ?? null),
+                cell('DEV MEM', devMem),
+                cell('JS HEAP', mem),
+                cell('FFMPEG', mt ? 'MT' : 'ST', mt ? 'on' : 'off'),
+                cell('ISOLATED', isolated ? 'YES' : 'NO', isolated ? 'on' : 'off'),
+            ].join('');
+        }
+        function setFooterStatus(s) {
+            const el = document.getElementById('footerStatus');
+            if (el) el.textContent = s;
+        }
+        function renderFooterMeta() {
+            const fs = document.getElementById('footerSession');
+            const ff = document.getElementById('footerFrames');
+            if (fs) fs.textContent = `SESSION ${fmtSession()}`;
+            if (ff) ff.textContent = `FRAMES ${state.frames.length}`;
+        }
+        renderStatsBar();
+        renderFooterMeta();
+        setInterval(() => { renderStatsBar(); renderFooterMeta(); }, 2000);
+        // Ticker: cycle a short hint line in the footer center.
+        const _tickerMessages = [
+            'PHOSPHOR BUILD · CRT MODE ENABLED',
+            'MONOSPACE · 80×24 AT HEART',
+            'NO TELEMETRY · NO UPLOADS · RUNS LOCAL',
+            'FFMPEG.WASM HANDLES WHAT THE BROWSER CAN\'T',
+            'HINT: COOP/COEP HEADERS UNLOCK MULTI-THREADING',
+        ];
+        let _tickerIdx = 0;
+        function rotateTicker() {
+            const el = document.getElementById('footerTicker');
+            if (!el) return;
+            el.textContent = _tickerMessages[_tickerIdx % _tickerMessages.length];
+            _tickerIdx++;
+        }
+        rotateTicker();
+        setInterval(rotateTicker, 6000);
 
         // ==================== UI Sync ====================
         function syncUIFromState() {
@@ -506,6 +1502,19 @@
             els.monoColor.value = state.settings.monoColor;
             els.preferBrowser.checked = state.settings.preferBrowser;
             els.includeAudio.checked = state.settings.includeAudio;
+            const stBox = document.getElementById('forceSTCheckbox');
+            if (stBox) {
+                // When the page isn't cross-origin isolated, MT is impossible;
+                // lock the box on so the UI doesn't suggest a choice that
+                // doesn't exist. wireForceST() handles the same state for the
+                // initial pass — this branch is for later resyncs.
+                if (!window.crossOriginIsolated) {
+                    stBox.checked = true;
+                    stBox.disabled = true;
+                } else {
+                    stBox.checked = state.forceSingleThreaded;
+                }
+            }
             updateModeButtons();
         }
 
@@ -543,6 +1552,45 @@
         els.monoColor.oninput = (e) => { state.settings.monoColor = e.target.value; rerenderCurrentFrame(); };
         els.preferBrowser.onchange = (e) => { state.settings.preferBrowser = e.target.checked; };
         els.includeAudio.onchange = (e) => { state.settings.includeAudio = e.target.checked; };
+        // Force-ST toggle: mirrors to localStorage + tears down any currently
+        // loaded ffmpeg so the *next* exec reloads the selected core. Gives
+        // the user a one-click escape from the stall-watchdog's decision,
+        // and a way to retry MT after an upstream fix without using devtools.
+        (function wireForceST() {
+            const box = document.getElementById('forceSTCheckbox');
+            if (!box) return;
+
+            // No cross-origin isolation → no SharedArrayBuffer → MT is
+            // physically unavailable regardless of user preference. Lock
+            // the checkbox on so the UI matches reality, and don't persist
+            // the forced-true value to localStorage (we didn't choose it;
+            // the user's server config did).
+            if (!window.crossOriginIsolated) {
+                box.checked = true;
+                box.disabled = true;
+                state.forceSingleThreaded = true;
+                return;
+            }
+
+            box.checked = state.forceSingleThreaded;
+            box.onchange = (e) => {
+                state.forceSingleThreaded = !!e.target.checked;
+                try {
+                    if (state.forceSingleThreaded) localStorage.setItem('asciiVideoConverter.forceSingleThreaded', '1');
+                    else localStorage.removeItem('asciiVideoConverter.forceSingleThreaded');
+                } catch (_) { /* quota / private mode */ }
+                // Drop the current ffmpeg so the next convert boots the newly-selected core.
+                if (state.ffmpegInstance) {
+                    try { state.ffmpegInstance.terminate(); } catch (_) {}
+                }
+                state.ffmpegInstance = null;
+                state.ffmpegLoadingPromise = null;
+                state.ffmpegInputName = null;
+                state.ffmpegInputSize = 0;
+                log(`Force-ST ${state.forceSingleThreaded ? 'enabled' : 'disabled'} — next convert will reload the ${state.forceSingleThreaded ? 'single-threaded' : 'multi-threaded'} core.`);
+                try { renderStatsBar(); } catch (_) {}
+            };
+        })();
         els.exportFormat.onchange = (e) => {
             const isMp4 = e.target.value === 'mp4';
             els.mp4Quality.classList.toggle('hidden', !isMp4);
@@ -724,75 +1772,104 @@
                 log('Loading ffmpeg.wasm...');
                 $('progress').textContent = 'Downloading ffmpeg (one-time ~30MB)...';
 
-                const toBlobURL = async (url, mimeType) => {
-                    const resp = await fetch(url);
-                    if (!resp.ok) throw new Error(`fetch ${url} → HTTP ${resp.status}`);
-                    const blob = new Blob([await resp.blob()], { type: mimeType });
-                    return URL.createObjectURL(blob);
-                };
+                const mtCapable = !!window.crossOriginIsolated;
 
-                // The UMD build of @ffmpeg/ffmpeg has a webpack dynamic import for
-                // its internal worker, built with a hardcoded relative URL. When
-                // loaded cross-origin (as we do here via dynamic import of a blob)
-                // that URL resolves to the blob: origin and fails to fetch. The
-                // fix (credit: ffmpegwasm discussion #580) is to patch the loader
-                // code to reference a variable we provide in the load() config.
-                // The '814' chunk ID is specific to @ffmpeg/ffmpeg@0.12.6.
-                log('Fetching ffmpeg.js and patching worker loader...');
-                const rawResp = await fetch(`${FFMPEG_BASE}/ffmpeg.js`);
-                if (!rawResp.ok) throw new Error(`fetch ffmpeg.js → HTTP ${rawResp.status}`);
-                let js = await rawResp.text();
-                const pattern = 'new URL(e.p+e.u(814),e.b)';
-                if (!js.includes(pattern)) {
-                    log('WARNING: expected patch pattern not found in ffmpeg.js. Worker may misbehave.');
-                }
-                js = js.replace(pattern, 'r.workerLoadURL');
-                const ffmpegBlobURL = URL.createObjectURL(new Blob([js], { type: 'text/javascript' }));
-
-                log('Importing ffmpeg module...');
-                await import(ffmpegBlobURL);
-                if (!window.FFmpegWASM || !window.FFmpegWASM.FFmpeg) {
-                    throw new Error('FFmpegWASM global not defined after import. Version mismatch?');
-                }
-
-                const ffmpeg = new window.FFmpegWASM.FFmpeg();
-                ffmpeg.on('log', ({ type, message }) => {
-                    // Filter the spammy per-frame lines ffmpeg emits during encode/decode.
-                    if (!message) return;
-                    if (message.startsWith('frame=')) return;
-                    if (message.includes('bitrate=') && message.includes('time=')) return;
-                    // swscaler emits "No accelerated colorspace conversion found"
-                    // once per thread-per-frame in wasm — tens of thousands of
-                    // identical lines for a long clip. Keep them in the devtools
-                    // console for debugging, drop them from the UI log so real
-                    // output isn't buried.
-                    if (message.includes('No accelerated colorspace conversion found')) {
-                        console.debug(`ffmpeg[${type}]: ${message}`);
-                        return;
-                    }
-                    log(`ffmpeg[${type}]: ${message}`);
-                });
-
-                const mt = !!window.crossOriginIsolated;
-                log(`Using ${mt ? 'multi-threaded' : 'single-threaded'} ffmpeg core.`);
-                if (!mt) {
+                // Main-thread ST fallback path: no cross-origin isolation, so
+                // no SharedArrayBuffer, so no Atomics.wait anywhere; wrapping
+                // in a worker would buy us nothing and cost ~2× postMessage
+                // round-trips. Preserve the original direct-load path here.
+                if (!mtCapable) {
+                    log('Using single-threaded ffmpeg core (no cross-origin isolation).');
                     log('For MT (~2-4× faster on multi-core machines), serve with COOP/COEP headers:');
                     log('  Cross-Origin-Opener-Policy: same-origin');
                     log('  Cross-Origin-Embedder-Policy: require-corp');
+
+                    const toBlobURL = async (url, mimeType) => {
+                        const resp = await fetch(url);
+                        if (!resp.ok) throw new Error(`fetch ${url} → HTTP ${resp.status}`);
+                        const blob = new Blob([await resp.blob()], { type: mimeType });
+                        return URL.createObjectURL(blob);
+                    };
+
+                    log('Fetching ffmpeg.js and patching worker loader...');
+                    const rawResp = await fetch(`${FFMPEG_BASE}/ffmpeg.js`);
+                    if (!rawResp.ok) throw new Error(`fetch ffmpeg.js → HTTP ${rawResp.status}`);
+                    let js = await rawResp.text();
+                    const pattern = 'new URL(e.p+e.u(814),e.b)';
+                    if (!js.includes(pattern)) {
+                        log('WARNING: expected patch pattern not found in ffmpeg.js. Worker may misbehave.');
+                    }
+                    js = js.replace(pattern, 'r.workerLoadURL');
+                    const ffmpegBlobURL = URL.createObjectURL(new Blob([js], { type: 'text/javascript' }));
+
+                    log('Importing ffmpeg module...');
+                    await import(ffmpegBlobURL);
+                    if (!window.FFmpegWASM || !window.FFmpegWASM.FFmpeg) {
+                        throw new Error('FFmpegWASM global not defined after import. Version mismatch?');
+                    }
+
+                    const ffmpeg = new window.FFmpegWASM.FFmpeg();
+                    ffmpeg.on('log', ({ type, message }) => {
+                        if (!message) return;
+                        if (ingestFFmpegStderr(message)) return;
+                        if (message.startsWith('frame=')) return;
+                        if (message.includes('bitrate=') && message.includes('time=')) return;
+                        // emscripten prints "Aborted()" on exit — even successful
+                        // ones — because @ffmpeg/core uses abort() to unwind. It's
+                        // confusing in the UI log; keep it in devtools instead.
+                        if (message.trim() === 'Aborted()') { console.debug(`ffmpeg[${type}]: ${message}`); return; }
+                        if (message.includes('No accelerated colorspace conversion found')) {
+                            console.debug(`ffmpeg[${type}]: ${message}`);
+                            return;
+                        }
+                        log(`ffmpeg[${type}]: ${message}`);
+                    });
+
+                    const config = {
+                        workerLoadURL: await toBlobURL(`${FFMPEG_BASE}/814.ffmpeg.js`, 'text/javascript'),
+                        coreURL: await toBlobURL(`${FFMPEG_CORE_ST_BASE}/ffmpeg-core.js`, 'text/javascript'),
+                        wasmURL: await toBlobURL(`${FFMPEG_CORE_ST_BASE}/ffmpeg-core.wasm`, 'application/wasm'),
+                    };
+                    log('Compiling wasm...');
+                    await ffmpeg.load(config);
+                    log('ffmpeg.wasm ready.');
+                    state.ffmpegInstance = ffmpeg;
+                    return ffmpeg;
+                }
+
+                // Isolated path: run FFmpeg inside our own dedicated worker.
+                // This keeps any SharedArrayBuffer/Atomics.wait the manager
+                // emits off the browser main thread (Chromium throws there),
+                // which is what Firefox has been effectively getting for
+                // free. forceSingleThreaded (set sticky by the stall
+                // watchdog) still selects which core to load; we just load
+                // it in a worker either way.
+                const mt = !state.forceSingleThreaded;
+                log(`Using ${mt ? 'multi-threaded' : 'single-threaded'} ffmpeg core (hosted in a dedicated Web Worker).`);
+                if (state.forceSingleThreaded) {
+                    log('ST selected because an earlier MT attempt stalled (sticky for this session).');
                 }
                 const coreBase = mt ? FFMPEG_CORE_MT_BASE : FFMPEG_CORE_ST_BASE;
 
-                const config = {
-                    workerLoadURL: await toBlobURL(`${FFMPEG_BASE}/814.ffmpeg.js`, 'text/javascript'),
-                    coreURL: await toBlobURL(`${coreBase}/ffmpeg-core.js`, 'text/javascript'),
-                    wasmURL: await toBlobURL(`${coreBase}/ffmpeg-core.wasm`, 'application/wasm'),
-                };
-                if (mt) {
-                    config.workerURL = await toBlobURL(`${coreBase}/ffmpeg-core.worker.js`, 'application/javascript');
-                }
+                log('Spawning ffmpeg worker...');
+                const ffmpeg = createFFmpegWorkerProxy();
+                ffmpeg.on('log', ({ type, message }) => {
+                    if (!message) return;
+                    if (ingestFFmpegStderr(message)) return;
+                    if (message.startsWith('frame=')) return;
+                    if (message.includes('bitrate=') && message.includes('time=')) return;
+                    // emscripten prints "Aborted()" on exit — even successful
+                    // ones — because @ffmpeg/core uses abort() to unwind. It's
+                    // confusing in the UI log; keep it in devtools instead.
+                    if (message.trim() === 'Aborted()') { console.debug(`ffmpeg[${type}]: ${message}`); return; }
+                    // Swscaler per-frame spam is filtered inside the worker
+                    // (see FFMPEG_WORKER_SRC) so we never pay its postMessage
+                    // cost. Nothing to strip here.
+                    log(`ffmpeg[${type}]: ${message}`);
+                });
 
-                log('Compiling wasm...');
-                await ffmpeg.load(config);
+                log('Compiling wasm (inside worker)...');
+                await ffmpeg.load({ FFMPEG_BASE, coreBase, mt });
 
                 log('ffmpeg.wasm ready.');
                 state.ffmpegInstance = ffmpeg;
@@ -878,6 +1955,22 @@
         // Emits frames at exactly target size and fps, in raw RGB24. Very fast —
         // this is where ffmpeg earns its weight vs the browser path.
         async function extractFramesFFmpeg(file, startTime, endTime, asciiW, asciiH, fps, charSet) {
+            // One retry iff the MT stall watchdog fired mid-exec. The
+            // watchdog terminates the worker (which rejects our exec below)
+            // and sets forceSingleThreaded + mtStallTriggered; the next pass
+            // picks up a fresh ST-core worker and runs again.
+            try {
+                return await _extractFramesFFmpegOnce(file, startTime, endTime, asciiW, asciiH, fps, charSet);
+            } catch (e) {
+                if (state.mtStallTriggered) {
+                    state.mtStallTriggered = false;
+                    log('Retrying decode with single-threaded ffmpeg core...');
+                    return await _extractFramesFFmpegOnce(file, startTime, endTime, asciiW, asciiH, fps, charSet);
+                }
+                throw e;
+            }
+        }
+        async function _extractFramesFFmpegOnce(file, startTime, endTime, asciiW, asciiH, fps, charSet) {
             // Guard against silent no-op scaling. `scale=0:0` in ffmpeg means
             // "use input dimensions" — if asciiW or asciiH are zero/NaN here,
             // we'd blast frames.rgb at full source resolution and blow out
@@ -899,11 +1992,14 @@
             const expectedFrames = Math.round(duration * fps);
 
             log(`ffmpeg: extracting ~${expectedFrames} frames at ${sw}×${sh} (${startTime.toFixed(2)}s → ${endTime.toFixed(2)}s @ ${fps}fps)`);
-            $('progress').textContent = 'Decoding with ffmpeg...';
+            startFFmpegJob('decoding', duration, { stallable: true });
 
             const progressHandler = ({ progress }) => {
-                if (progress > 0 && progress <= 1) {
-                    $('progress').textContent = `ffmpeg: ${Math.round(progress * 100)}% decoded`;
+                if (progress > 0 && progress <= 1 && _ffmpegJob) {
+                    // Event arrives with (0, 1]. Convert to seconds of source
+                    // consumed so the ticker's % math and frame counter agree.
+                    _ffmpegJob.timeS = Math.max(_ffmpegJob.timeS, progress * duration);
+                    renderFFmpegJobProgress();
                 }
             };
             ffmpeg.on('progress', progressHandler);
@@ -935,6 +2031,7 @@
                 await ffmpeg.exec(args);
             } finally {
                 ffmpeg.off('progress', progressHandler);
+                stopFFmpegJob();
             }
             const decodeMs = performance.now() - tStart;
 
@@ -1010,122 +2107,11 @@
             }
         }
 
-        // Re-encodes the source to MP4/H.264/AAC in the background so the
-        // <video> element (and therefore the user's eyeballs) can play it
-        // when the browser decoder wouldn't accept the original container
-        // or codec. We never feed this transcoded copy back into the
-        // convert pass — ASCII extraction still runs on the untouched
-        // original via extractFramesFFmpeg — so this is purely cosmetic
-        // and its quality/bitrate can be whatever plays smoothly.
-        async function transcodeForPreview(file) {
-            const ffmpeg = await loadFFmpeg();
-            const inputName = await ensureFileInFFmpegFS(ffmpeg, file);
-            const outputName = 'preview.mp4';
-
-            const fallbackEl = els.videoFallbackNotice;
-            fallbackEl.classList.remove('hidden');
-            fallbackEl.innerHTML =
-                '<strong>Transcoding preview in the background…</strong> ' +
-                'ffmpeg.wasm is re-encoding the source to MP4 so your browser can play it. ' +
-                'Meanwhile you can set Start/End and click <strong>Convert Full Range</strong> — ' +
-                'the ASCII pass decodes the original file, not this preview, so you don\'t lose quality by skipping ahead. ' +
-                '<span id="previewTranscodePct" style="color:#c4b5fd;">starting…</span>';
-
-            const progressHandler = ({ progress }) => {
-                if (state.file !== file) return;
-                if (progress > 0 && progress <= 1) {
-                    const pctEl = $('previewTranscodePct');
-                    if (pctEl) pctEl.textContent = `${Math.round(progress * 100)}% transcoded`;
-                }
-            };
-            ffmpeg.on('progress', progressHandler);
-
-            log('ffmpeg: transcoding preview (MP4/H.264/AAC, ultrafast, 480p)...');
-            const tStart = performance.now();
-            try {
-                // -preset ultrafast + -crf 30 → prioritize encode speed; this
-                //   is a throwaway preview, not an export.
-                // -vf scale=-2:min(480,ih) → cap height at 480 (don't upscale
-                //   shorter sources), width auto to preserve aspect and land
-                //   on an even number (yuv420p requires even dims). H.264
-                //   encode time scales ~linearly with pixel count, so a
-                //   1080p source drops from 2.07 Mpx to ~410 kpx per frame,
-                //   a ~5× speed-up with negligible preview quality cost.
-                // -c:a aac 64k mono 22.05 kHz → preview-grade audio, small
-                //   enough that the audio encode is ≲5% of video encode time.
-                //   Fine for "is this the right clip?"; convert still decodes
-                //   the original file for the actual ASCII output.
-                // -movflags +faststart → harmless on blob: URLs, good habit.
-                await ffmpeg.exec([
-                    '-i', inputName,
-                    '-vf', "scale=-2:'min(480,ih)'",
-                    '-c:v', 'libx264',
-                    '-preset', 'ultrafast',
-                    '-crf', '30',
-                    '-pix_fmt', 'yuv420p',
-                    '-c:a', 'aac',
-                    '-b:a', '64k',
-                    '-ac', '1',
-                    '-ar', '22050',
-                    '-movflags', '+faststart',
-                    '-y',
-                    outputName,
-                ]);
-            } finally {
-                try { ffmpeg.off('progress', progressHandler); } catch (e) { /* older API */ }
-            }
-
-            // User swapped files mid-transcode — discard.
-            if (state.file !== file) {
-                try { await ffmpeg.deleteFile(outputName); } catch (e) { /* ignore */ }
-                return null;
-            }
-
-            const data = await ffmpeg.readFile(outputName);
-            try { await ffmpeg.deleteFile(outputName); } catch (e) { /* ignore */ }
-
-            log(`ffmpeg: preview transcode done in ${((performance.now() - tStart) / 1000).toFixed(1)}s (${(data.length / 1024 / 1024).toFixed(1)} MB).`);
-            // Slice to get a clean ArrayBuffer (Uint8Array views from wasm
-            // heap can have lingering offsets that confuse Blob).
-            const ab = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
-            return new Blob([ab], { type: 'video/mp4' });
-        }
-
-        async function kickOffPreviewTranscode(file) {
-            if (state.previewTranscodeFor === file) return;
-            state.previewTranscodeFor = file;
-            try {
-                const blob = await transcodeForPreview(file);
-                if (!blob) return;
-                if (state.file !== file) return;
-
-                if (state.previewBlobURL) URL.revokeObjectURL(state.previewBlobURL);
-                const url = URL.createObjectURL(blob);
-                state.previewBlobURL = url;
-                state.previewIsTranscoded = true;
-
-                els.videoFallbackNotice.classList.add('hidden');
-                els.videoFallbackNotice.innerHTML = '';
-                els.videoPlayer.src = url;
-                // The raw-file blob URL is no longer attached to <video>;
-                // release it so the browser can drop the file-backed blob
-                // (can be hundreds of MB for a typical source).
-                if (state.sourceObjectURL) {
-                    URL.revokeObjectURL(state.sourceObjectURL);
-                    state.sourceObjectURL = null;
-                }
-                log('Preview swapped to transcoded MP4 — browser decoder can now play it.');
-            } catch (e) {
-                if (state.file !== file) return;
-                log(`Preview transcode failed: ${e.message}`);
-                els.videoFallbackNotice.classList.remove('hidden');
-                els.videoFallbackNotice.textContent =
-                    `Preview transcode failed (${e.message}). Convert still works — ` +
-                    `ffmpeg reads the original file directly, independent of the preview.`;
-            } finally {
-                if (state.previewTranscodeFor === file) state.previewTranscodeFor = null;
-            }
-        }
+        // Preview transcode was removed: on Chromium browsers the libx264
+        // encode pass tied up the single ffmpeg worker for minutes, blocking
+        // any subsequent Convert; and it never earned its keep on Firefox
+        // either. If <video> can't play a file, we now just surface the
+        // incompatibility and let the user rely on the log / ASCII output.
 
         // ==================== File Upload ====================
         els.uploadBtn.onclick = () => els.fileInput.click();
@@ -1136,15 +2122,9 @@
             // Invalidate ffmpeg FS cache — new file.
             state.ffmpegInputName = null;
             state.ffmpegInputSize = 0;
-            // Release any blob URLs held from a previous upload so we don't
+            // Release any blob URL held from a previous upload so we don't
             // slowly accumulate them over multiple file swaps.
             if (state.sourceObjectURL) { URL.revokeObjectURL(state.sourceObjectURL); state.sourceObjectURL = null; }
-            if (state.previewBlobURL) { URL.revokeObjectURL(state.previewBlobURL); state.previewBlobURL = null; }
-            // A transcode for a previous file may still be in flight; the
-            // file-identity guards inside it will drop its results. Reset
-            // the flags so the new file starts with a clean slate.
-            state.previewTranscodeFor = null;
-            state.previewIsTranscoded = false;
             state.fallbackStartedFor = null;
             if (state.fallbackWatchdog) {
                 clearTimeout(state.fallbackWatchdog);
@@ -1154,7 +2134,7 @@
             state.sourceObjectURL = url;
             els.videoPlayer.src = url;
             $('welcomeBox').classList.add('hidden');
-            $('sourceRow').classList.remove('hidden');
+            $('videoBox').classList.remove('hidden');
             els.videoFallbackNotice.classList.add('hidden');
             els.previewBtn.disabled = true;
             els.convertBtn.disabled = true;
@@ -1184,18 +2164,6 @@
 
         els.videoPlayer.onloadedmetadata = () => {
             const v = els.videoPlayer;
-            // When we swap .src to a transcoded MP4, this handler fires a
-            // second time. The probe/original-file path already populated
-            // duration, dimensions, Start/End and the ASCII grid — and the
-            // user may have adjusted Start/End while waiting for the
-            // transcode. Don't clobber any of that; just (re-)enable the
-            // buttons that depend on a browser-decodable source.
-            if (state.previewIsTranscoded) {
-                els.previewBtn.disabled = false;
-                els.convertBtn.disabled = false;
-                log(`Transcoded preview loaded: ${v.videoWidth}×${v.videoHeight}, ${v.duration.toFixed(1)}s. Preview Current Frame re-enabled.`);
-                return;
-            }
             state.videoDuration = v.duration;
             state.videoAspect = v.videoHeight / v.videoWidth;
             recomputeAsciiDimsIfVideo();
@@ -1210,11 +2178,11 @@
                 log('Note: requestVideoFrameCallback not supported by this browser.');
             }
         };
-        // Routes a file through the ffmpeg fallback path: probe metadata,
-        // enable Convert, kick off the background preview transcode. Called
-        // both by <video>.onerror (Chrome's fast path) and by the Firefox
-        // watchdog (when <video> stalls without firing error). Guarded so
-        // repeated triggers for the same file are no-ops.
+        // Called when <video> can't decode the source (bad container,
+        // unsupported codec, missing OS decoder). We probe the file with
+        // ffmpeg to get duration and dimensions so Convert still works,
+        // and show a clear "incompatible format" notice. No transcoding —
+        // the user just won't get native <video> playback for this source.
         async function runVideoFallback(probedFile, reason) {
             if (!probedFile) return;
             if (state.fallbackStartedFor === probedFile) return;
@@ -1225,8 +2193,21 @@
                 state.fallbackWatchdog = null;
             }
 
-            log(`${reason} Asking ffmpeg.wasm for metadata, then transcoding a preview in the background.`);
+            log(`${reason} Probing metadata with ffmpeg.wasm so Convert still has dimensions and duration.`);
             els.videoFallbackNotice.classList.remove('hidden');
+            // The <summary> headline is static HTML; runVideoFallback only
+            // touches the body so the disclosure widget stays intact.
+            const body = els.videoFallbackNotice.querySelector('.fallback-body');
+            if (body) body.innerHTML =
+                '<p>That\'s normal for MKV/AVI without OS codecs, or for HEVC/AV1 when there\'s no hardware decoder available. ' +
+                'Convert still works — ffmpeg.wasm decodes the source directly once you click <strong>CONVERT RANGE</strong>.</p>' +
+                '<p><em>Playback vs. conversion are different tradeoffs.</em> ' +
+                'Native playback of exotic containers is most consistent in Chromium-based browsers (Chrome, Brave, Edge). ' +
+                'But <strong>conversion is many times faster wherever ffmpeg.wasm can run multi-threaded</strong>, which currently ' +
+                'means Firefox (and any browser that doesn\'t hit ' +
+                '<a href="https://github.com/ffmpegwasm/ffmpeg.wasm/issues/772" target="_blank" rel="noopener">ffmpeg.wasm&nbsp;#772</a>). ' +
+                'If you care about playback, use Chromium; if you care about convert speed, use Firefox — even if it can\'t play the source natively.</p>';
+
             // Preview reads a frame from the <video> element, so it can't work without a browser-decoded source.
             els.previewBtn.disabled = true;
             // Keep Convert disabled until the probe fills in duration/dimensions;
@@ -1256,12 +2237,6 @@
 
                 log(`ffmpeg metadata: ${durTxt}, ${dimTxt}. ASCII grid ${state.asciiW}×${state.asciiH}.`);
                 els.convertBtn.disabled = false;
-
-                // Fire off the transcode without awaiting — the main thread
-                // stays responsive (ffmpeg.wasm runs on a worker) and the
-                // user can hit Convert immediately. The result, when ready,
-                // swaps into <video> as a playable MP4.
-                kickOffPreviewTranscode(probedFile);
             } catch (e) {
                 log(`ffmpeg metadata probe failed: ${e.message}`);
                 // Still let the user try — they may have set Start/End manually
@@ -1271,16 +2246,9 @@
         }
 
         els.videoPlayer.onerror = () => {
-            // Once we've swapped in a transcoded MP4, any further <video>
-            // errors are real problems with the transcode — don't retry,
-            // don't overwrite the (now-stale) fallback notice, don't loop.
-            if (state.previewIsTranscoded) {
-                log('<video> reported an error on the transcoded preview. Leaving current state alone.');
-                return;
-            }
             runVideoFallback(
                 state.file,
-                `<video> can't decode this container/codec. That's expected for MKV/AVI without OS codecs, or for HEVC/AV1 without HW decode.`
+                `<video> can't decode this container/codec.`
             );
         };
 
@@ -1295,7 +2263,7 @@
             const v = els.videoPlayer;
             if (!v.duration) return;
             els.previewBtn.disabled = true;
-            els.previewBtn.textContent = '⏳ Rendering...';
+            els.previewBtn.textContent = '◐ RENDERING...';
 
             try {
                 const canvas = new OffscreenCanvas(state.asciiW * 4, state.asciiH * 4);
@@ -1315,12 +2283,28 @@
                 log(`Preview failed: ${err.message}`);
             }
 
-            els.previewBtn.textContent = '👁 Preview Current Frame';
+            els.previewBtn.textContent = '◉ PREVIEW FRAME';
             els.previewBtn.disabled = false;
         };
 
         // ==================== Full Conversion ====================
-        els.cancelBtn.onclick = () => { state.cancelRequested = true; log('Cancel requested.'); };
+        // Cancel = flip the flag AND terminate the ffmpeg worker. The flag
+        // alone only stops JS-side loops; ffmpeg.exec() runs to completion
+        // inside the wasm worker regardless. Terminating rejects the
+        // in-flight exec immediately. Cost: next convert re-loads ffmpeg
+        // (~1–2s) and re-writes the source to MEMFS. That's the right
+        // price for actually-stop-now.
+        els.cancelBtn.onclick = () => {
+            state.cancelRequested = true;
+            log('Cancel requested — terminating ffmpeg worker.');
+            if (state.ffmpegInstance) {
+                try { state.ffmpegInstance.terminate(); } catch (e) { /* ignore */ }
+            }
+            state.ffmpegInstance = null;
+            state.ffmpegLoadingPromise = null;
+            state.ffmpegInputName = null;
+            state.ffmpegInputSize = 0;
+        };
 
         els.convertBtn.onclick = async () => {
             const v = els.videoPlayer;
@@ -1338,8 +2322,9 @@
             els.previewBtn.disabled = true;
             els.uploadBtn.disabled = true;
             els.cancelBtn.classList.remove('hidden');
-            els.convertBtn.textContent = 'Processing...';
+            els.convertBtn.textContent = '◐ CONVERTING...';
             setEngineBadge(null);
+            setFooterStatus('CONVERTING');
 
             const tStart = performance.now();
             try {
@@ -1347,14 +2332,7 @@
                 let usedEngine = null;
 
                 // Default: ffmpeg. The checkbox flips us to try the browser path first.
-                // But if the <video> is currently showing a transcoded preview (because
-                // the browser couldn't decode the original), decoding from it would
-                // run ASCII on a re-encoded copy — lossy and silly when the original
-                // is already mounted in ffmpeg's FS. Force ffmpeg in that case.
-                const tryBrowserFirst = state.settings.preferBrowser && v.duration && !state.previewIsTranscoded;
-                if (state.settings.preferBrowser && state.previewIsTranscoded) {
-                    log('preferBrowser is on but the <video> source is a transcoded preview — using ffmpeg on the original to avoid a re-encode round-trip.');
-                }
+                const tryBrowserFirst = state.settings.preferBrowser && v.duration;
 
                 if (tryBrowserFirst) {
                     const hasRVFC = typeof v.requestVideoFrameCallback === 'function';
@@ -1410,15 +2388,24 @@
                 $('progress').textContent = `Ready: ${frames.length} frames (${usedEngine})`;
             } catch (err) {
                 console.error(err);
-                log(`Conversion failed: ${err.message}`);
-                alert('Conversion failed: ' + err.message);
-                $('progress').textContent = '';
+                // A Cancel click terminates the ffmpeg worker, which rejects
+                // the in-flight exec. That's a user-initiated stop, not a
+                // real failure — don't alert, just log and bail cleanly.
+                if (state.cancelRequested) {
+                    log('Conversion cancelled.');
+                    $('progress').textContent = 'Cancelled.';
+                } else {
+                    log(`Conversion failed: ${err.message}`);
+                    alert('Conversion failed: ' + err.message);
+                    $('progress').textContent = '';
+                }
             } finally {
                 els.convertBtn.disabled = false;
                 els.previewBtn.disabled = false;
                 els.uploadBtn.disabled = false;
                 els.cancelBtn.classList.add('hidden');
-                els.convertBtn.textContent = '🎨 Convert Full Range';
+                els.convertBtn.textContent = '▶▶ CONVERT RANGE';
+                setFooterStatus('READY');
             }
         };
 
@@ -1661,7 +2648,8 @@
             if (state.frames.length < 2) return;
             state.isPlaying = !state.isPlaying;
             if (state.isPlaying) {
-                els.playBtn.innerHTML = '⏸ Pause';
+                els.playBtn.innerHTML = '⏸ PAUSE';
+                setFooterStatus('PLAYING');
                 const interval = 1000 / state.settings.fps;
                 state.playbackInterval = setInterval(() => {
                     state.currentFrame++;
@@ -1670,7 +2658,8 @@
                     renderCurrentFrame();
                 }, interval);
             } else {
-                els.playBtn.innerHTML = '▶ Play';
+                els.playBtn.innerHTML = '▶ PLAY';
+                setFooterStatus('READY');
                 clearInterval(state.playbackInterval);
             }
         };
@@ -1693,8 +2682,12 @@
             const fmt = els.exportFormat.value;
             els.exportBtn.disabled = true;
             const origText = els.exportBtn.textContent;
+            els.exportBtn.textContent = '◐ EXPORTING...';
+            setFooterStatus('EXPORTING');
             try {
                 if (fmt === 'txt') exportCurrentFrameTxt();
+                else if (fmt === 'ans') exportCurrentFrameAnsi();
+                else if (fmt === 'gif-single') await exportCurrentFrameGif();
                 else if (fmt === 'sh') exportTerminalScript();
                 else if (fmt === 'mp4') await exportMP4();
                 else if (fmt === 'gif') await exportGIF();
@@ -1706,6 +2699,7 @@
                 els.exportBtn.disabled = false;
                 els.exportBtn.textContent = origText;
                 $('exportProgress').textContent = '';
+                setFooterStatus('READY');
             }
         };
 
@@ -1713,6 +2707,75 @@
             const frame = state.frames[state.currentFrame];
             downloadBlob(new Blob([frame.chars], { type: 'text/plain' }),
                          `ascii-frame-${state.currentFrame + 1}.txt`);
+            log(`TXT frame exported: frame ${state.currentFrame + 1}.`);
+        }
+
+        // Colorized ANSI — paints in any truecolor terminal when you `cat` it.
+        // Reuses the same frameToAnsi() the .sh animation script uses.
+        function exportCurrentFrameAnsi() {
+            const frame = state.frames[state.currentFrame];
+            const ansi = frameToAnsi(frame, state.asciiW,
+                                      state.settings.colorMode,
+                                      state.settings.monoColor);
+            downloadBlob(new Blob([ansi], { type: 'text/plain' }),
+                         `ascii-frame-${state.currentFrame + 1}.ans`);
+            log(`ANSI frame exported: frame ${state.currentFrame + 1} (cat it in a truecolor terminal).`);
+        }
+
+        // Single-frame GIF using the same gif.js worker as the animated export.
+        // One frame, no loop — effectively a PNG-ish bitmap but GIF keeps the
+        // pixelated rendering crisp without forcing us to pull in another encoder.
+        async function exportCurrentFrameGif() {
+            const gridW = state.asciiW, gridH = state.asciiH;
+            const cw = gridW * RENDER_CHAR_W, ch = gridH * RENDER_CHAR_H;
+
+            const canvas = document.createElement('canvas');
+            canvas.width = cw;
+            canvas.height = ch;
+
+            $('exportProgress').textContent = 'Loading GIF worker...';
+            let workerUrl;
+            try {
+                const resp = await fetch('https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js');
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                workerUrl = URL.createObjectURL(await resp.blob());
+            } catch (e) {
+                throw new Error(`Could not load GIF worker script: ${e.message}`);
+            }
+
+            const gif = new GIF({
+                workers: 2,
+                quality: 10,
+                width: cw,
+                height: ch,
+                workerScript: workerUrl,
+            });
+
+            const frame = state.frames[state.currentFrame];
+            renderFrameToCanvas(frame, canvas, {
+                charW: RENDER_CHAR_W, charH: RENDER_CHAR_H,
+                colorMode: state.settings.colorMode,
+                monoColor: state.settings.monoColor,
+                gridW, gridH,
+            });
+            gif.addFrame(canvas, { copy: true, delay: 100 });
+
+            return new Promise((resolve, reject) => {
+                gif.on('progress', (p) => {
+                    $('exportProgress').textContent = `Rendering GIF: ${Math.round(p * 100)}%`;
+                });
+                gif.on('finished', (blob) => {
+                    URL.revokeObjectURL(workerUrl);
+                    downloadBlob(blob, `ascii-frame-${state.currentFrame + 1}.gif`);
+                    log(`GIF frame exported: ${(blob.size / 1024).toFixed(1)} KB (${cw}×${ch}).`);
+                    resolve();
+                });
+                gif.on('abort', () => {
+                    URL.revokeObjectURL(workerUrl);
+                    reject(new Error('GIF render aborted'));
+                });
+                gif.render();
+            });
         }
 
         // ========== Terminal Script ==========
@@ -1893,11 +2956,18 @@ ${dataBlock}
             // ---------- Check WebCodecs H.264 support ----------
             // Firefox notably ships H.264 decode but not encode via WebCodecs.
             // If neither profile is supported, we hand the whole MP4 job to ffmpeg.wasm.
+            //
+            // avc: { format: 'avc' } is critical when muxing with mp4-muxer.
+            // By default Chrome emits H.264 NAL units in Annex-B framing
+            // (00 00 00 01 start codes); mp4-muxer expects AVCC framing
+            // (4-byte length prefix). Without this flag the MP4 writes fine
+            // but the video track is unplayable — audio still muxes correctly,
+            // which is exactly the "audio but no video" symptom we hit in Chrome.
             let videoCfg = {
                 codec: 'avc1.4d002a', width: cw, height: ch,
                 bitrate: qualityBitrate, framerate: fps,
-                hardwareAcceleration: 'prefer-hardware',
                 bitrateMode: 'constant',
+                avc: { format: 'avc' },
             };
             let support = await VideoEncoder.isConfigSupported(videoCfg);
             if (!support.supported) {
@@ -1915,6 +2985,9 @@ ${dataBlock}
                 });
                 return;
             }
+            // The browser may have normalized bits of the config (color
+            // space, level, etc). Use the vetted version the probe returned.
+            if (support.config) videoCfg = support.config;
 
             // ---------- WebCodecs path ----------
             const canvas = new OffscreenCanvas(cw, ch);
@@ -1962,9 +3035,11 @@ ${dataBlock}
             }
             const muxer = new Mp4Muxer.Muxer(muxerOpts);
 
+            let videoChunkCount = 0;
+            let videoEncoderError = null;
             const videoEncoder = new VideoEncoder({
-                output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-                error: (e) => { log(`VideoEncoder error: ${e.message || e}`); console.error('VideoEncoder error:', e); },
+                output: (chunk, meta) => { videoChunkCount++; muxer.addVideoChunk(chunk, meta); },
+                error: (e) => { videoEncoderError = e; log(`VideoEncoder error: ${e.message || e}`); console.error('VideoEncoder error:', e); },
             });
             videoEncoder.configure(videoCfg);
 
@@ -1987,6 +3062,19 @@ ${dataBlock}
             }
             await videoEncoder.flush();
             videoEncoder.close();
+
+            // Defense against the "supported but silent" failure mode
+            // (Chrome/Linux without VA-API, oddball HW encoders, etc).
+            // If we got nothing back, don't finalize a broken MP4 — hand
+            // the whole job to ffmpeg.wasm instead.
+            if (videoChunkCount === 0) {
+                log(`WebCodecs produced 0 video chunks${videoEncoderError ? ` (${videoEncoderError.message || videoEncoderError})` : ''}. Falling back to ffmpeg.wasm libx264 encoder.`);
+                await exportMP4ViaFFmpeg({
+                    frames: state.frames, audioBuffer, audioAlreadyClipped,
+                    userStartTime, userEndTime, qualityBitrate, cw, ch, fps,
+                });
+                return;
+            }
 
             if (audioConfig && audioBuffer) {
                 $('exportProgress').textContent = 'Encoding audio...';
