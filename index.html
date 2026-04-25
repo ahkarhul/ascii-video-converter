@@ -944,7 +944,7 @@
                         <div class="stack">
                             <input type="file" id="fileInput" accept="video/*" class="hidden">
                             <button id="uploadBtn" class="btn-primary">▲ UPLOAD VIDEO</button>
-                            <button id="previewBtn" disabled>◉ PREVIEW FRAME</button>
+                            <button id="previewBtn" disabled>◉ SOURCE VIDEO FRAME</button>
                             <button id="convertBtn" class="btn-primary" disabled>▶▶ CONVERT RANGE</button>
                             <button id="cancelBtn" class="btn-alert hidden">✕ CANCEL</button>
                         </div>
@@ -2644,7 +2644,7 @@ self.onmessage = async function (e) {
                 log(`Preview failed: ${err.message}`);
             }
 
-            els.previewBtn.textContent = '◉ PREVIEW FRAME';
+            els.previewBtn.textContent = '◉ SOURCE VIDEO FRAME';
             els.previewBtn.disabled = false;
         };
 
