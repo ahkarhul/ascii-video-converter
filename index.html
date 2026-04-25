@@ -1648,8 +1648,31 @@ self.onmessage = async function (e) {
             state.colorGrade = { saturation: 1.0, brightness: 0.0, contrast: 1.0, bgColor: '#000000' };
             onColorGradeChanged();
         };
-        // Stub — replaced by the localStorage persistence layer below.
-        function saveColorGrade() {}
+        const COLOR_GRADE_LS_KEY = 'asciiVideoColorGrade';
+        function saveColorGrade() {
+            try { localStorage.setItem(COLOR_GRADE_LS_KEY, JSON.stringify(state.colorGrade)); }
+            catch (_) { /* quota / private mode — silent fallback */ }
+        }
+        function loadColorGrade() {
+            const defaults = { saturation: 1.0, brightness: 0.0, contrast: 1.0, bgColor: '#000000' };
+            let raw;
+            try { raw = localStorage.getItem(COLOR_GRADE_LS_KEY); }
+            catch (_) { state.colorGrade = defaults; return; }
+            if (!raw) { state.colorGrade = defaults; return; }
+            try {
+                const parsed = JSON.parse(raw);
+                state.colorGrade = {
+                    saturation: typeof parsed.saturation === 'number' ? parsed.saturation : defaults.saturation,
+                    brightness: typeof parsed.brightness === 'number' ? parsed.brightness : defaults.brightness,
+                    contrast:   typeof parsed.contrast   === 'number' ? parsed.contrast   : defaults.contrast,
+                    bgColor:    /^#[0-9a-f]{6}$/i.test(parsed.bgColor) ? parsed.bgColor   : defaults.bgColor,
+                };
+            } catch (_) {
+                state.colorGrade = defaults;
+            }
+        }
+        loadColorGrade();
+        applyColorGradeUI();
 
         els.preferBrowser.onchange = (e) => { state.settings.preferBrowser = e.target.checked; };
         els.includeAudio.onchange = (e) => { state.settings.includeAudio = e.target.checked; };
