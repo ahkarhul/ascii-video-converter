@@ -900,6 +900,33 @@
                         </div>
                     </div>
 
+                    <div id="colorGradeBox" class="section hidden">
+                        <h2>Color Grade</h2>
+                        <div class="stack">
+                            <div id="cgSatRow">
+                                <label>Saturation: <span id="cgSatValue">1.00</span></label>
+                                <input type="range" id="cgSat" min="0" max="2" step="0.05" value="1">
+                            </div>
+                            <div>
+                                <label>Brightness: <span id="cgBrValue">0.00</span></label>
+                                <input type="range" id="cgBr" min="-1" max="1" step="0.05" value="0">
+                            </div>
+                            <div>
+                                <label>Contrast: <span id="cgCtValue">1.00</span></label>
+                                <input type="range" id="cgCt" min="0" max="2" step="0.05" value="1">
+                            </div>
+                            <div>
+                                <label>Background</label>
+                                <input type="color" id="cgBg" value="#000000">
+                            </div>
+                            <button id="cgReset" class="btn-sm">↺ RESET</button>
+                            <div class="help-text">
+                                Cosmetic only — applied at draw time, so changes are
+                                instant and carry through to every export.
+                            </div>
+                        </div>
+                    </div>
+
                     <div id="exportBox" class="section hidden">
                         <h2>Export</h2>
                         <div class="stack">
@@ -1312,6 +1339,13 @@ self.onmessage = async function (e) {
             preferBrowser: $('preferBrowser'),
             engineBadge: $('engineBadge'),
             logBox: $('logBox'),
+            colorGradeBox: $('colorGradeBox'),
+            cgSatRow: $('cgSatRow'),
+            cgSat: $('cgSat'), cgSatValue: $('cgSatValue'),
+            cgBr: $('cgBr'), cgBrValue: $('cgBrValue'),
+            cgCt: $('cgCt'), cgCtValue: $('cgCtValue'),
+            cgBg: $('cgBg'),
+            cgReset: $('cgReset'),
         };
 
         // ==================== Logging ====================
@@ -1550,6 +1584,7 @@ self.onmessage = async function (e) {
                 }
             }
             updateModeButtons();
+            applyColorGradeUI();
         }
 
         function updateModeButtons() {
@@ -1557,6 +1592,7 @@ self.onmessage = async function (e) {
             els.modeMono.className = isMono ? 'active' : 'inactive';
             els.modeColor.className = !isMono ? 'active' : 'inactive';
             els.monoColorBox.classList.toggle('hidden', !isMono);
+            els.cgSatRow.classList.toggle('hidden', isMono);
         }
 
         function setEngineBadge(engine) {
@@ -1584,6 +1620,37 @@ self.onmessage = async function (e) {
         els.modeMono.onclick = () => { state.settings.colorMode = 'mono'; updateModeButtons(); rerenderCurrentFrame(); };
         els.modeColor.onclick = () => { state.settings.colorMode = 'color'; updateModeButtons(); rerenderCurrentFrame(); };
         els.monoColor.oninput = (e) => { state.settings.monoColor = e.target.value; rerenderCurrentFrame(); };
+
+        // ==================== Color Grade ====================
+        // Sliders apply live: during playback, the next frame draw picks up
+        // state.colorGrade automatically; while paused, we kick a redraw so
+        // the user sees the change without unpausing.
+        function applyColorGradeUI() {
+            const cg = state.colorGrade;
+            els.cgSat.value = cg.saturation;
+            els.cgBr.value = cg.brightness;
+            els.cgCt.value = cg.contrast;
+            els.cgBg.value = cg.bgColor;
+            els.cgSatValue.textContent = cg.saturation.toFixed(2);
+            els.cgBrValue.textContent = cg.brightness.toFixed(2);
+            els.cgCtValue.textContent = cg.contrast.toFixed(2);
+        }
+        function onColorGradeChanged() {
+            applyColorGradeUI();
+            saveColorGrade();
+            rerenderCurrentFrame();
+        }
+        els.cgSat.oninput = (e) => { state.colorGrade.saturation = parseFloat(e.target.value); onColorGradeChanged(); };
+        els.cgBr.oninput  = (e) => { state.colorGrade.brightness = parseFloat(e.target.value); onColorGradeChanged(); };
+        els.cgCt.oninput  = (e) => { state.colorGrade.contrast   = parseFloat(e.target.value); onColorGradeChanged(); };
+        els.cgBg.oninput  = (e) => { state.colorGrade.bgColor    = e.target.value;             onColorGradeChanged(); };
+        els.cgReset.onclick = () => {
+            state.colorGrade = { saturation: 1.0, brightness: 0.0, contrast: 1.0, bgColor: '#000000' };
+            onColorGradeChanged();
+        };
+        // Stub — replaced by the localStorage persistence layer below.
+        function saveColorGrade() {}
+
         els.preferBrowser.onchange = (e) => { state.settings.preferBrowser = e.target.checked; };
         els.includeAudio.onchange = (e) => { state.settings.includeAudio = e.target.checked; };
         // Force-ST toggle: mirrors to localStorage + tears down any currently
@@ -2815,6 +2882,7 @@ self.onmessage = async function (e) {
         function showAsciiOutput() {
             $('asciiBox').classList.remove('hidden');
             $('playbackBox').classList.remove('hidden');
+            els.colorGradeBox.classList.remove('hidden');
             $('exportBox').classList.remove('hidden');
             // Make sure the MP4 sub-options track the current format selection.
             els.exportFormat.onchange({ target: { value: els.exportFormat.value } });
