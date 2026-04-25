@@ -918,12 +918,16 @@
                         <h2>Time Range</h2>
                         <div class="grid-2">
                             <div>
-                                <label>Start (s)</label>
-                                <input type="number" id="startTime" min="0" step="0.1" value="0">
+                                <label>Start</label>
+                                <input type="text" id="startTime" inputmode="text"
+                                       placeholder="0:00" value="0:00"
+                                       title="Accepts seconds (83.5) or M:SS (1:23.5) or H:MM:SS">
                             </div>
                             <div>
-                                <label>End (s)</label>
-                                <input type="number" id="endTime" min="0" step="0.1">
+                                <label>End</label>
+                                <input type="text" id="endTime" inputmode="text"
+                                       placeholder="0:00"
+                                       title="Accepts seconds (83.5) or M:SS (1:23.5) or H:MM:SS">
                             </div>
                         </div>
                         <button id="useFullBtn" class="btn-sm" style="margin-top: 0.625rem;">Use Full Video</button>
@@ -1007,7 +1011,7 @@
                                 <select id="exportFormat">
                                     <option value="txt">Current Frame · Plain (.txt)</option>
                                     <option value="ans">Current Frame · ANSI colored (.ans)</option>
-                                    <option value="gif-single">Current Frame · Image (.gif)</option>
+                                    <option value="gif-single" selected>Current Frame · Image (.gif)</option>
                                     <option value="sh">Terminal Animation (.sh)</option>
                                     <option value="mp4">MP4 Video</option>
                                     <option value="gif">Animated GIF</option>
@@ -1690,6 +1694,16 @@ self.onmessage = async function (e) {
         };
         els.startTime.oninput = updateChunkWarning;
         els.endTime.oninput = updateChunkWarning;
+        // On blur, normalize whatever the user typed (plain seconds, M:SS,
+        // or H:MM:SS) into the canonical M:SS format. This is the cheapest
+        // affordance for "I understood your input" — empty / unparseable
+        // values are left as-is so the user can fix their typo.
+        function normalizeTimeInputOnBlur(e) {
+            const sec = parseTimeMS(e.target.value);
+            if (isFinite(sec)) e.target.value = formatTimeMS(sec, 1);
+        }
+        els.startTime.addEventListener('blur', normalizeTimeInputOnBlur);
+        els.endTime.addEventListener('blur', normalizeTimeInputOnBlur);
         els.modeMono.onclick = () => { state.settings.colorMode = 'mono'; updateModeButtons(); rerenderCurrentFrame(); };
         els.modeColor.onclick = () => { state.settings.colorMode = 'color'; updateModeButtons(); rerenderCurrentFrame(); };
         els.monoColor.oninput = (e) => { state.settings.monoColor = e.target.value; rerenderCurrentFrame(); };
@@ -1853,8 +1867,8 @@ self.onmessage = async function (e) {
         function updateChunkWarning() {
             const el = els.chunkWarning;
             if (!el) return;
-            const startTime = parseFloat(els.startTime.value);
-            const endTime = parseFloat(els.endTime.value);
+            const startTime = parseTimeMS(els.startTime.value);
+            const endTime = parseTimeMS(els.endTime.value);
             if (!isFinite(startTime) || !isFinite(endTime) || endTime <= startTime || !state.asciiW) {
                 el.classList.add('hidden');
                 return;
@@ -2149,6 +2163,41 @@ self.onmessage = async function (e) {
             const h = Math.floor(sec / 3600);
             const m = Math.round((sec - h * 3600) / 60);
             return `~${h}h ${m.toString().padStart(2, '0')}m`;
+        }
+
+        // Parse a time value from the start/end inputs. Accepts plain seconds
+        // ("83.5"), M:SS ("1:23.5"), or H:MM:SS ("1:02:05"). Returns NaN on
+        // malformed input — callers decide how to react.
+        function parseTimeMS(str) {
+            if (typeof str !== 'string') return NaN;
+            const s = str.trim();
+            if (s === '') return NaN;
+            const parts = s.split(':');
+            if (parts.length > 3) return NaN;
+            let total = 0;
+            for (const p of parts) {
+                const n = parseFloat(p);
+                if (!isFinite(n) || n < 0 || p.trim() === '') return NaN;
+                total = total * 60 + n;
+            }
+            return total;
+        }
+
+        // Format seconds as "M:SS" (or "H:MM:SS"). decimals=1 adds tenths,
+        // e.g. "1:23.5" — we use that for the time-input fields so the user
+        // can see fractional seconds; the player counter uses decimals=0.
+        function formatTimeMS(sec, decimals = 0) {
+            if (!isFinite(sec) || sec < 0) return '';
+            const factor = Math.pow(10, decimals);
+            const rounded = Math.round(sec * factor) / factor;
+            const h = Math.floor(rounded / 3600);
+            const m = Math.floor((rounded - h * 3600) / 60);
+            const s = rounded - h * 3600 - m * 60;
+            const sStr = decimals > 0
+                ? s.toFixed(decimals).padStart(3 + decimals, '0')
+                : Math.floor(s).toString().padStart(2, '0');
+            if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${sStr}`;
+            return `${m}:${sStr}`;
         }
 
         async function ensureFileInFFmpegFS(ffmpeg, file) {
@@ -2461,9 +2510,7 @@ self.onmessage = async function (e) {
             state.videoDuration = v.duration;
             state.videoAspect = v.videoHeight / v.videoWidth;
             recomputeAsciiDimsIfVideo();
-            els.endTime.value = Math.round(v.duration * 10) / 10;
-            els.endTime.max = v.duration;
-            els.startTime.max = v.duration;
+            els.endTime.value = formatTimeMS(v.duration, 1);
             els.previewBtn.disabled = false;
             els.convertBtn.disabled = false;
             log(`Video metadata: ${v.videoWidth}×${v.videoHeight}, ${v.duration.toFixed(1)}s`);
@@ -2519,9 +2566,7 @@ self.onmessage = async function (e) {
                 }
                 if (duration > 0) {
                     state.videoDuration = duration;
-                    els.endTime.value = Math.round(duration * 10) / 10;
-                    els.endTime.max = duration;
-                    els.startTime.max = duration;
+                    els.endTime.value = formatTimeMS(duration, 1);
                 }
 
                 const durTxt = duration > 0 ? `${Math.round(duration * 10) / 10}s` : 'unknown duration';
@@ -2547,8 +2592,8 @@ self.onmessage = async function (e) {
         };
 
         els.useFullBtn.onclick = () => {
-            els.startTime.value = 0;
-            els.endTime.value = Math.round(state.videoDuration * 10) / 10;
+            els.startTime.value = formatTimeMS(0, 1);
+            els.endTime.value = formatTimeMS(state.videoDuration, 1);
             updateChunkWarning();
         };
 
@@ -2606,9 +2651,15 @@ self.onmessage = async function (e) {
             if (!v.duration && state.settings.preferBrowser) {
                 log('Video metadata not loaded. Ignoring preferBrowser — using ffmpeg.');
             }
-            const startTime = Math.max(0, parseFloat(els.startTime.value) || 0);
-            const endTimeRaw = parseFloat(els.endTime.value);
-            const endTime = Math.min(state.videoDuration || endTimeRaw || Infinity, endTimeRaw || state.videoDuration || 0);
+            const startParsed = parseTimeMS(els.startTime.value);
+            const endParsed = parseTimeMS(els.endTime.value);
+            if (!isFinite(startParsed) || !isFinite(endParsed)) {
+                log('Convert aborted: start or end time is not a valid number, M:SS, or H:MM:SS value.');
+                alert('Start and End must be in seconds (83.5) or M:SS (1:23.5) format.');
+                return;
+            }
+            const startTime = Math.max(0, startParsed);
+            const endTime = Math.min(state.videoDuration || endParsed || Infinity, endParsed || state.videoDuration || 0);
             if (!(endTime > startTime)) { log('Convert aborted: start must be less than end.'); alert('Start must be less than end'); return; }
 
             state.cancelRequested = false;
@@ -2970,7 +3021,11 @@ self.onmessage = async function (e) {
                 monoColor: state.settings.monoColor,
                 gridW: state.asciiW, gridH: state.asciiH,
             });
-            $('frameCounter').textContent = `Frame ${state.currentFrame + 1} / ${state.frames.length}`;
+            const fps = state.settings.fps;
+            const curT = formatTimeMS(state.currentFrame / fps, 0);
+            const totT = formatTimeMS(state.frames.length / fps, 0);
+            $('frameCounter').textContent =
+                `Frame ${state.currentFrame + 1} / ${state.frames.length}  ·  ${curT} / ${totT}`;
         }
 
         function rerenderCurrentFrame() { if (state.frames.length) renderCurrentFrame(); }
@@ -3283,8 +3338,8 @@ ${dataBlock}
             const canvasH = gridH * RENDER_CHAR_H;
             const cw = canvasW + (canvasW % 2), ch = canvasH + (canvasH % 2);
             const fps = state.settings.fps;
-            const userStartTime = parseFloat(els.startTime.value) || 0;
-            const userEndTime = parseFloat(els.endTime.value) || state.videoDuration;
+            const userStartTime = parseTimeMS(els.startTime.value) || 0;
+            const userEndTime = parseTimeMS(els.endTime.value) || state.videoDuration;
 
             // ---------- Audio decode (both paths need this) ----------
             let audioBuffer = null;
@@ -3623,8 +3678,8 @@ ${dataBlock}
             // Per-segment audio slice (optional).
             let haveAudio = false;
             if (audioBuffer) {
-                const audioStart = audioAlreadyClipped ? (segmentStartSec - (parseFloat(els.startTime.value) || 0)) : segmentStartSec;
-                const audioEnd = audioAlreadyClipped ? (segmentEndSec - (parseFloat(els.startTime.value) || 0)) : segmentEndSec;
+                const audioStart = audioAlreadyClipped ? (segmentStartSec - (parseTimeMS(els.startTime.value) || 0)) : segmentStartSec;
+                const audioEnd = audioAlreadyClipped ? (segmentEndSec - (parseTimeMS(els.startTime.value) || 0)) : segmentEndSec;
                 const clipped = sliceAudioBuffer(audioBuffer, Math.max(0, audioStart), Math.max(0, audioEnd));
                 if (clipped.length > 0) {
                     const wav = audioBufferToWavBytes(clipped);
