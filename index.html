@@ -628,18 +628,25 @@
             margin: 0 auto;
         }
 
-        /* Color-grade strip sits inside .ascii-box directly under the canvas
-           so the controls feel attached to the output they affect. Horizontal
-           on wide screens, wraps to a stack when the column gets narrow. */
-        .grade-bar {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.75rem 1rem;
-            align-items: end;
+        /* Strips inside .ascii-box directly under the canvas — controls feel
+           attached to the output they affect, and the left settings sidebar
+           stays uncluttered. Each .canvas-bar is one of these strips
+           (playback / grade / export); each variant adds its own inner
+           layout. Horizontal on wide screens, wraps to a stack via flex-wrap
+           when the column gets narrow. */
+        .canvas-bar {
             margin-top: 1rem;
             padding-top: 0.875rem;
             border-top: 1px solid var(--border);
         }
+
+        .playback-bar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+        .playback-bar #playBtn { flex: 0 0 auto; }
+        .playback-bar #resetBtn { flex: 0 0 auto; padding: 0.55rem 0.85rem; }
+        .playback-bar #scrubber { flex: 1 1 200px; min-width: 150px; margin: 0; }
+        .playback-bar #frameCounter { flex: 0 0 auto; margin-top: 0; }
+
+        .grade-bar { display: flex; flex-wrap: wrap; gap: 0.75rem 1rem; align-items: end; }
         .grade-control { display: flex; flex-direction: column; gap: 0.25rem; flex: 1 1 140px; min-width: 120px; }
         .grade-control label { font-size: 0.6875rem; color: var(--phos); display: flex; justify-content: space-between; gap: 0.5rem; }
         .grade-control input[type="range"] { margin: 0; }
@@ -647,6 +654,12 @@
         .grade-bg { flex: 0 0 auto; min-width: 0; }
         .grade-bg input[type="color"] { width: 3rem; height: 1.75rem; }
         .grade-reset { flex: 0 0 auto; align-self: end; }
+
+        .export-bar > * + * { margin-top: 0.5rem; }
+        .export-row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+        .export-row #exportFormat { flex: 1 1 220px; min-width: 180px; }
+        .export-row #mp4Quality { flex: 1 1 160px; min-width: 140px; }
+        .export-row #exportBtn { flex: 0 0 auto; }
 
         .hidden { display: none !important; }
 
@@ -907,51 +920,6 @@
                             is fixed, or on a different machine).
                         </div>
                     </div>
-
-                    <div id="playbackBox" class="section hidden">
-                        <h2>Playback</h2>
-                        <div class="stack">
-                            <div style="display: flex; gap: 0.375rem;">
-                                <button id="playBtn" style="flex: 1;">▶ PLAY</button>
-                                <button id="resetBtn" style="width: auto; padding: 0.55rem 0.85rem;">⏮</button>
-                            </div>
-                            <input type="range" id="scrubber" min="0" max="0" value="0">
-                            <div id="frameCounter" class="status-line"></div>
-                        </div>
-                    </div>
-
-                    <div id="exportBox" class="section hidden">
-                        <h2>Export</h2>
-                        <div class="stack">
-                            <select id="exportFormat">
-                                <option value="txt">Current Frame · Plain (.txt)</option>
-                                <option value="ans">Current Frame · ANSI colored (.ans)</option>
-                                <option value="gif-single">Current Frame · Image (.gif)</option>
-                                <option value="sh">Terminal Animation (.sh)</option>
-                                <option value="mp4">MP4 Video</option>
-                                <option value="gif">Animated GIF</option>
-                            </select>
-                            <select id="mp4Quality" class="hidden">
-                                <option value="high" selected>High bitrate (crisp)</option>
-                                <option value="medium">Medium bitrate</option>
-                                <option value="low">Low bitrate</option>
-                            </select>
-                            <div id="mp4AudioBox" class="hidden">
-                                <label class="checkbox-row">
-                                    <input type="checkbox" id="includeAudio" checked>
-                                    <span>Include audio</span>
-                                </label>
-                                <div class="help-text">
-                                    Tries the browser's native audio decoder first, falls
-                                    back to ffmpeg.wasm when it can't read the container
-                                    (common for MKV/AVI). ffmpeg is already loaded by the
-                                    time you reach Export, so this is fast.
-                                </div>
-                            </div>
-                            <button id="exportBtn" class="btn-primary">↓ EXPORT</button>
-                        </div>
-                        <div id="exportProgress" class="status-line"></div>
-                    </div>
                 </div>
             </div>
 
@@ -977,7 +945,15 @@
                     <div id="asciiBox" class="ascii-box hidden">
                         <h3>ASCII OUTPUT <span id="engineBadge"></span></h3>
                         <canvas id="displayCanvas" class="preview"></canvas>
-                        <div id="colorGradeBox" class="grade-bar">
+
+                        <div id="playbackBox" class="canvas-bar playback-bar">
+                            <button id="playBtn">▶ PLAY</button>
+                            <button id="resetBtn">⏮</button>
+                            <input type="range" id="scrubber" min="0" max="0" value="0">
+                            <div id="frameCounter" class="status-line"></div>
+                        </div>
+
+                        <div id="colorGradeBox" class="canvas-bar grade-bar">
                             <div id="cgSatRow" class="grade-control">
                                 <label>Saturation <span id="cgSatValue" class="grade-num">1.00</span></label>
                                 <input type="range" id="cgSat" min="0" max="2" step="0.05" value="1">
@@ -995,6 +971,38 @@
                                 <input type="color" id="cgBg" value="#000000">
                             </div>
                             <button id="cgReset" class="btn-sm grade-reset">↺ RESET</button>
+                        </div>
+
+                        <div id="exportBox" class="canvas-bar export-bar">
+                            <div class="export-row">
+                                <select id="exportFormat">
+                                    <option value="txt">Current Frame · Plain (.txt)</option>
+                                    <option value="ans">Current Frame · ANSI colored (.ans)</option>
+                                    <option value="gif-single">Current Frame · Image (.gif)</option>
+                                    <option value="sh">Terminal Animation (.sh)</option>
+                                    <option value="mp4">MP4 Video</option>
+                                    <option value="gif">Animated GIF</option>
+                                </select>
+                                <select id="mp4Quality" class="hidden">
+                                    <option value="high" selected>High bitrate (crisp)</option>
+                                    <option value="medium">Medium bitrate</option>
+                                    <option value="low">Low bitrate</option>
+                                </select>
+                                <button id="exportBtn" class="btn-primary">↓ EXPORT</button>
+                            </div>
+                            <div id="mp4AudioBox" class="hidden">
+                                <label class="checkbox-row">
+                                    <input type="checkbox" id="includeAudio" checked>
+                                    <span>Include audio</span>
+                                </label>
+                                <div class="help-text">
+                                    Tries the browser's native audio decoder first, falls
+                                    back to ffmpeg.wasm when it can't read the container
+                                    (common for MKV/AVI). ffmpeg is already loaded by the
+                                    time you reach Export, so this is fast.
+                                </div>
+                            </div>
+                            <div id="exportProgress" class="status-line"></div>
                         </div>
                     </div>
 
@@ -2914,10 +2922,9 @@ self.onmessage = async function (e) {
         function rerenderCurrentFrame() { if (state.frames.length) renderCurrentFrame(); }
 
         function showAsciiOutput() {
-            // colorGradeBox is nested inside #asciiBox, so it reveals along with it.
+            // playback/grade/export bars are nested inside #asciiBox, so they
+            // reveal along with it.
             $('asciiBox').classList.remove('hidden');
-            $('playbackBox').classList.remove('hidden');
-            $('exportBox').classList.remove('hidden');
             // Make sure the MP4 sub-options track the current format selection.
             els.exportFormat.onchange({ target: { value: els.exportFormat.value } });
         }
