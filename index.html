@@ -900,6 +900,33 @@
                         </div>
                     </div>
 
+                    <div id="colorGradeBox" class="section hidden">
+                        <h2>Color Grade</h2>
+                        <div class="stack">
+                            <div id="cgSatRow">
+                                <label>Saturation: <span id="cgSatValue">1.00</span></label>
+                                <input type="range" id="cgSat" min="0" max="2" step="0.05" value="1">
+                            </div>
+                            <div>
+                                <label>Brightness: <span id="cgBrValue">0.00</span></label>
+                                <input type="range" id="cgBr" min="-1" max="1" step="0.05" value="0">
+                            </div>
+                            <div>
+                                <label>Contrast: <span id="cgCtValue">1.00</span></label>
+                                <input type="range" id="cgCt" min="0" max="2" step="0.05" value="1">
+                            </div>
+                            <div>
+                                <label>Background</label>
+                                <input type="color" id="cgBg" value="#000000">
+                            </div>
+                            <button id="cgReset" class="btn-sm">↺ RESET</button>
+                            <div class="help-text">
+                                Cosmetic only — applied at draw time, so changes are
+                                instant and carry through to every export.
+                            </div>
+                        </div>
+                    </div>
+
                     <div id="exportBox" class="section hidden">
                         <h2>Export</h2>
                         <div class="stack">
@@ -1261,6 +1288,18 @@ self.onmessage = async function (e) {
                 preferBrowser: false,
                 includeAudio: true,
             },
+            // Cosmetic draw-time transforms. These do NOT affect which ASCII
+            // chars get picked (that was baked at decode), so changes apply
+            // instantly to the existing frames[] array.
+            //   saturation: 0=grayscale, 1=unchanged, 2=doubled
+            //   brightness: additive on normalized 0..1 channels (-1..1)
+            //   contrast:   around the 0.5 midpoint (0..2)
+            colorGrade: {
+                saturation: 1.0,
+                brightness: 0.0,
+                contrast: 1.0,
+                bgColor: '#000000',
+            },
             // ffmpeg runtime
             ffmpegInstance: null,
             ffmpegLoadingPromise: null,
@@ -1300,6 +1339,13 @@ self.onmessage = async function (e) {
             preferBrowser: $('preferBrowser'),
             engineBadge: $('engineBadge'),
             logBox: $('logBox'),
+            colorGradeBox: $('colorGradeBox'),
+            cgSatRow: $('cgSatRow'),
+            cgSat: $('cgSat'), cgSatValue: $('cgSatValue'),
+            cgBr: $('cgBr'), cgBrValue: $('cgBrValue'),
+            cgCt: $('cgCt'), cgCtValue: $('cgCtValue'),
+            cgBg: $('cgBg'),
+            cgReset: $('cgReset'),
         };
 
         // ==================== Logging ====================
@@ -1538,6 +1584,7 @@ self.onmessage = async function (e) {
                 }
             }
             updateModeButtons();
+            applyColorGradeUI();
         }
 
         function updateModeButtons() {
@@ -1545,6 +1592,7 @@ self.onmessage = async function (e) {
             els.modeMono.className = isMono ? 'active' : 'inactive';
             els.modeColor.className = !isMono ? 'active' : 'inactive';
             els.monoColorBox.classList.toggle('hidden', !isMono);
+            els.cgSatRow.classList.toggle('hidden', isMono);
         }
 
         function setEngineBadge(engine) {
@@ -1572,6 +1620,60 @@ self.onmessage = async function (e) {
         els.modeMono.onclick = () => { state.settings.colorMode = 'mono'; updateModeButtons(); rerenderCurrentFrame(); };
         els.modeColor.onclick = () => { state.settings.colorMode = 'color'; updateModeButtons(); rerenderCurrentFrame(); };
         els.monoColor.oninput = (e) => { state.settings.monoColor = e.target.value; rerenderCurrentFrame(); };
+
+        // ==================== Color Grade ====================
+        // Sliders apply live: during playback, the next frame draw picks up
+        // state.colorGrade automatically; while paused, we kick a redraw so
+        // the user sees the change without unpausing.
+        function applyColorGradeUI() {
+            const cg = state.colorGrade;
+            els.cgSat.value = cg.saturation;
+            els.cgBr.value = cg.brightness;
+            els.cgCt.value = cg.contrast;
+            els.cgBg.value = cg.bgColor;
+            els.cgSatValue.textContent = cg.saturation.toFixed(2);
+            els.cgBrValue.textContent = cg.brightness.toFixed(2);
+            els.cgCtValue.textContent = cg.contrast.toFixed(2);
+        }
+        function onColorGradeChanged() {
+            applyColorGradeUI();
+            saveColorGrade();
+            rerenderCurrentFrame();
+        }
+        els.cgSat.oninput = (e) => { state.colorGrade.saturation = parseFloat(e.target.value); onColorGradeChanged(); };
+        els.cgBr.oninput  = (e) => { state.colorGrade.brightness = parseFloat(e.target.value); onColorGradeChanged(); };
+        els.cgCt.oninput  = (e) => { state.colorGrade.contrast   = parseFloat(e.target.value); onColorGradeChanged(); };
+        els.cgBg.oninput  = (e) => { state.colorGrade.bgColor    = e.target.value;             onColorGradeChanged(); };
+        els.cgReset.onclick = () => {
+            state.colorGrade = { saturation: 1.0, brightness: 0.0, contrast: 1.0, bgColor: '#000000' };
+            onColorGradeChanged();
+        };
+        const COLOR_GRADE_LS_KEY = 'asciiVideoColorGrade';
+        function saveColorGrade() {
+            try { localStorage.setItem(COLOR_GRADE_LS_KEY, JSON.stringify(state.colorGrade)); }
+            catch (_) { /* quota / private mode — silent fallback */ }
+        }
+        function loadColorGrade() {
+            const defaults = { saturation: 1.0, brightness: 0.0, contrast: 1.0, bgColor: '#000000' };
+            let raw;
+            try { raw = localStorage.getItem(COLOR_GRADE_LS_KEY); }
+            catch (_) { state.colorGrade = defaults; return; }
+            if (!raw) { state.colorGrade = defaults; return; }
+            try {
+                const parsed = JSON.parse(raw);
+                state.colorGrade = {
+                    saturation: typeof parsed.saturation === 'number' ? parsed.saturation : defaults.saturation,
+                    brightness: typeof parsed.brightness === 'number' ? parsed.brightness : defaults.brightness,
+                    contrast:   typeof parsed.contrast   === 'number' ? parsed.contrast   : defaults.contrast,
+                    bgColor:    /^#[0-9a-f]{6}$/i.test(parsed.bgColor) ? parsed.bgColor   : defaults.bgColor,
+                };
+            } catch (_) {
+                state.colorGrade = defaults;
+            }
+        }
+        loadColorGrade();
+        applyColorGradeUI();
+
         els.preferBrowser.onchange = (e) => { state.settings.preferBrowser = e.target.checked; };
         els.includeAudio.onchange = (e) => { state.settings.includeAudio = e.target.checked; };
         // Force-ST toggle: mirrors to localStorage + tears down any currently
@@ -1907,16 +2009,35 @@ self.onmessage = async function (e) {
             }
         }
 
-        // Stream the File into an in-memory Uint8Array, updating the progress
-        // status line every 5% of bytes read. Without this, a big MKV sits
-        // silent for seconds on slow disks because file.arrayBuffer() is a
-        // single opaque read — the user can't tell loading from hanging.
+        // Stream the File into an in-memory Uint8Array, calling onProgress
+        // at most every ~100ms (and once at completion). Percent-based ticks
+        // would freeze the UI for minutes per tick on multi-GB files. Throughput
+        // is measured over a ~2s trailing window so the rate reflects current
+        // disk speed, not the average since read start.
         async function readFileWithProgress(file, onProgress) {
             const total = file.size;
             const out = new Uint8Array(total);
             const reader = file.stream().getReader();
+            const RATE_WINDOW_MS = 2000;
+            const UPDATE_INTERVAL_MS = 100;
+            const tStart = performance.now();
+            const samples = [{ t: tStart, bytes: 0 }];
             let offset = 0;
-            let lastReport = -1;
+            let lastReport = tStart;
+
+            const emit = (now, done) => {
+                while (samples.length > 1 && now - samples[0].t > RATE_WINDOW_MS) {
+                    samples.shift();
+                }
+                const oldest = samples[0];
+                const dt = (now - oldest.t) / 1000;
+                const db = offset - oldest.bytes;
+                const rate = dt > 0 && db > 0 ? db / dt : 0;
+                const eta = rate > 0 ? (total - offset) / rate : NaN;
+                onProgress(offset, total, rate, eta);
+                if (!done) lastReport = now;
+            };
+
             try {
                 while (true) {
                     const { done, value } = await reader.read();
@@ -1924,16 +2045,37 @@ self.onmessage = async function (e) {
                     if (state.cancelRequested) throw new Error('Cancelled during file read.');
                     out.set(value, offset);
                     offset += value.byteLength;
-                    const pct = total > 0 ? Math.floor(offset / total * 20) : 0; // 5% ticks
-                    if (pct !== lastReport) {
-                        lastReport = pct;
-                        onProgress(offset, total);
-                    }
+                    const now = performance.now();
+                    samples.push({ t: now, bytes: offset });
+                    if (now - lastReport >= UPDATE_INTERVAL_MS) emit(now, false);
                 }
             } finally {
                 try { reader.releaseLock(); } catch (_) {}
             }
+            emit(performance.now(), true);
             return out;
+        }
+
+        // Format bytes/sec as "1.2 MB/s" (or KB/s for small values).
+        function formatRate(bps) {
+            if (!isFinite(bps) || bps <= 0) return '';
+            if (bps >= 1048576) return `${(bps / 1048576).toFixed(1)} MB/s`;
+            if (bps >= 1024) return `${(bps / 1024).toFixed(1)} KB/s`;
+            return `${bps.toFixed(0)} B/s`;
+        }
+
+        // Format seconds as "5s" / "3m 12s" / "1h 04m".
+        function formatEta(sec) {
+            if (!isFinite(sec) || sec < 0) return '';
+            if (sec < 60) return `~${Math.ceil(sec)}s`;
+            if (sec < 3600) {
+                const m = Math.floor(sec / 60);
+                const s = Math.round(sec - m * 60);
+                return `~${m}m ${s.toString().padStart(2, '0')}s`;
+            }
+            const h = Math.floor(sec / 3600);
+            const m = Math.round((sec - h * 3600) / 60);
+            return `~${h}h ${m.toString().padStart(2, '0')}m`;
         }
 
         async function ensureFileInFFmpegFS(ffmpeg, file) {
@@ -1948,10 +2090,16 @@ self.onmessage = async function (e) {
             const sizeMB = (file.size / 1024 / 1024).toFixed(1);
             log(`ffmpeg: reading ${sizeMB} MB from disk...`);
             const tRead = performance.now();
-            const data = await readFileWithProgress(file, (read, total) => {
-                const pct = Math.round(read / total * 100);
+            const data = await readFileWithProgress(file, (read, total, rate, eta) => {
+                const pct = total > 0 ? (read / total * 100).toFixed(1) : '0.0';
                 const readMB = (read / 1048576).toFixed(0);
-                $('progress').textContent = `Reading file: ${pct}% (${readMB}/${Math.round(total / 1048576)} MB)`;
+                const totalMB = Math.round(total / 1048576);
+                const parts = [`Reading: ${pct}%`, `${readMB} / ${totalMB} MB`];
+                const rateStr = formatRate(rate);
+                if (rateStr) parts.push(rateStr);
+                const etaStr = formatEta(eta);
+                if (etaStr) parts.push(etaStr);
+                $('progress').textContent = parts.join(' · ');
             });
             log(`ffmpeg: read ${sizeMB} MB in ${((performance.now() - tRead) / 1000).toFixed(1)}s. Copying to virtual FS...`);
 
@@ -2650,22 +2798,64 @@ self.onmessage = async function (e) {
         }
 
         // ==================== Canvas Rendering ====================
+
+        // Parse "#rrggbb" -> [r,g,b]. Returns [0,0,0] on bad input.
+        function hexToRgb(hex) {
+            if (typeof hex !== 'string' || hex.length !== 7 || hex[0] !== '#') return [0, 0, 0];
+            const n = parseInt(hex.slice(1), 16);
+            if (!isFinite(n)) return [0, 0, 0];
+            return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+        }
+
+        // Build a per-channel lookup table for brightness+contrast (cheap; 256
+        // entries) and return both the table and a saturation factor. Using a
+        // closure here (rather than a per-pixel transform) keeps the inner
+        // draw loop tight; the cost is paid once per frame, not per cell.
+        function buildGrader(grade) {
+            const sat = grade.saturation;
+            const br = grade.brightness;
+            const ct = grade.contrast;
+            const isDefault = sat === 1 && br === 0 && ct === 1;
+            const lut = new Uint8ClampedArray(256);
+            for (let i = 0; i < 256; i++) {
+                let v = i / 255;
+                v += br;
+                v = (v - 0.5) * ct + 0.5;
+                lut[i] = Math.round(v * 255);
+            }
+            return { lut, sat, isDefault };
+        }
+
         function renderFrameToCanvas(frame, canvas, opts) {
             const { charW, charH, colorMode, monoColor, gridW, gridH } = opts;
+            const grade = state.colorGrade;
             const ctx = canvas.getContext('2d', { alpha: false });
             canvas.width = gridW * charW;
             canvas.height = gridH * charH;
 
-            ctx.fillStyle = '#000';
+            ctx.fillStyle = grade.bgColor || '#000';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.font = `${charH}px "Courier New", "Menlo", monospace`;
             ctx.textBaseline = 'top';
 
             const rows = frame.chars.split('\n');
             const colors = frame.colors;
+            const { lut, sat, isDefault } = buildGrader(grade);
 
             if (colorMode === 'mono') {
-                ctx.fillStyle = monoColor;
+                // Apply brightness/contrast (and saturation, even though it's
+                // a no-op on a single color when sat=1) once to the mono color.
+                let [r, g, b] = hexToRgb(monoColor);
+                if (!isDefault) {
+                    r = lut[r]; g = lut[g]; b = lut[b];
+                    if (sat !== 1) {
+                        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+                        r = Math.max(0, Math.min(255, Math.round(lum + (r - lum) * sat)));
+                        g = Math.max(0, Math.min(255, Math.round(lum + (g - lum) * sat)));
+                        b = Math.max(0, Math.min(255, Math.round(lum + (b - lum) * sat)));
+                    }
+                }
+                ctx.fillStyle = `rgb(${r},${g},${b})`;
                 for (let y = 0; y < rows.length; y++) {
                     const row = rows[y];
                     for (let x = 0; x < row.length; x++) {
@@ -2679,7 +2869,16 @@ self.onmessage = async function (e) {
                     const row = rows[y];
                     for (let x = 0; x < row.length; x++) {
                         const idx = (y * gridW + x) * 3;
-                        const r = colors[idx], g = colors[idx + 1], b = colors[idx + 2];
+                        let r = colors[idx], g = colors[idx + 1], b = colors[idx + 2];
+                        if (!isDefault) {
+                            r = lut[r]; g = lut[g]; b = lut[b];
+                            if (sat !== 1) {
+                                const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+                                r = Math.max(0, Math.min(255, Math.round(lum + (r - lum) * sat)));
+                                g = Math.max(0, Math.min(255, Math.round(lum + (g - lum) * sat)));
+                                b = Math.max(0, Math.min(255, Math.round(lum + (b - lum) * sat)));
+                            }
+                        }
                         const key = (r << 16) | (g << 8) | b;
                         if (key !== curColor) { ctx.fillStyle = `rgb(${r},${g},${b})`; curColor = key; }
                         const ch = row[x];
@@ -2706,6 +2905,7 @@ self.onmessage = async function (e) {
         function showAsciiOutput() {
             $('asciiBox').classList.remove('hidden');
             $('playbackBox').classList.remove('hidden');
+            els.colorGradeBox.classList.remove('hidden');
             $('exportBox').classList.remove('hidden');
             // Make sure the MP4 sub-options track the current format selection.
             els.exportFormat.onchange({ target: { value: els.exportFormat.value } });
