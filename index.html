@@ -2354,19 +2354,25 @@ self.onmessage = async function (e) {
             };
             ffmpeg.on('progress', progressHandler);
 
-            // -ss BEFORE -i  = input seeking, fast and keyframe-aligned
-            //   (accurate enough for our sub-second purposes).
-            // -an           = drop the audio stream entirely; we only need frames.
-            // -vf scale=    = downsample to the ASCII grid. Default sws flag
-            //   (bicubic) is used intentionally — ":flags=area" has been
-            //   observed to silently fail in some ffmpeg.wasm MT builds.
-            // -pix_fmt rgb24 + -f rawvideo = raw packed RGB output, zero
-            //   container overhead.
+            // Two-stage seek so the first emitted frame is the user's exact
+            // requested timestamp, not the keyframe before it. With only an
+            // input -ss, MKV/MP4 sources frequently land on the previous
+            // keyframe (often >1s earlier), and since the audio path is
+            // sample-accurate via decodeAudioData, that misalignment shows
+            // up as audible audio-leads-video drift on export.
+            //   outer -ss (before -i):  fast keyframe-skip — cheap.
+            //   inner -ss (after  -i):  decode-and-discard to the exact
+            //                           target — accurate.
+            // -an / -vf / -pix_fmt / -f / -r are unchanged.
+            const COARSE_SEEK_MARGIN = 3.0;  // seconds of headroom for the previous keyframe
+            const coarseSeek = Math.max(0, startTime - COARSE_SEEK_MARGIN);
+            const fineSeek = startTime - coarseSeek;
             const args = [
-                '-ss', startTime.toString(),
-                '-t', duration.toString(),
+                '-ss', coarseSeek.toString(),
                 '-an',
                 '-i', inputName,
+                '-ss', fineSeek.toString(),
+                '-t', duration.toString(),
                 '-vf', `scale=${sw}:${sh}`,
                 '-r', fps.toString(),
                 '-pix_fmt', 'rgb24',
@@ -2426,10 +2432,18 @@ self.onmessage = async function (e) {
             log(`ffmpeg: extracting audio ${startTime.toFixed(2)}s → ${endTime.toFixed(2)}s as 48kHz stereo PCM WAV`);
             $('exportProgress').textContent = 'Extracting audio with ffmpeg...';
 
+            // Two-stage seek matches the video extract so the audio fallback
+            // also lands on the exact requested timestamp. (Single -ss before
+            // -i is keyframe-snapped on some containers; that's the source
+            // of the audio-leads-video drift this sibling fix is addressing.)
+            const COARSE_SEEK_MARGIN = 3.0;
+            const coarseSeek = Math.max(0, startTime - COARSE_SEEK_MARGIN);
+            const fineSeek = startTime - coarseSeek;
             await ffmpeg.exec([
-                '-ss', startTime.toString(),
-                '-t', duration.toString(),
+                '-ss', coarseSeek.toString(),
                 '-i', inputName,
+                '-ss', fineSeek.toString(),
+                '-t', duration.toString(),
                 '-vn',
                 '-acodec', 'pcm_s16le',
                 '-ar', '48000',
