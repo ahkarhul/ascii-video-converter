@@ -1907,16 +1907,35 @@ self.onmessage = async function (e) {
             }
         }
 
-        // Stream the File into an in-memory Uint8Array, updating the progress
-        // status line every 5% of bytes read. Without this, a big MKV sits
-        // silent for seconds on slow disks because file.arrayBuffer() is a
-        // single opaque read — the user can't tell loading from hanging.
+        // Stream the File into an in-memory Uint8Array, calling onProgress
+        // at most every ~100ms (and once at completion). Percent-based ticks
+        // would freeze the UI for minutes per tick on multi-GB files. Throughput
+        // is measured over a ~2s trailing window so the rate reflects current
+        // disk speed, not the average since read start.
         async function readFileWithProgress(file, onProgress) {
             const total = file.size;
             const out = new Uint8Array(total);
             const reader = file.stream().getReader();
+            const RATE_WINDOW_MS = 2000;
+            const UPDATE_INTERVAL_MS = 100;
+            const tStart = performance.now();
+            const samples = [{ t: tStart, bytes: 0 }];
             let offset = 0;
-            let lastReport = -1;
+            let lastReport = tStart;
+
+            const emit = (now, done) => {
+                while (samples.length > 1 && now - samples[0].t > RATE_WINDOW_MS) {
+                    samples.shift();
+                }
+                const oldest = samples[0];
+                const dt = (now - oldest.t) / 1000;
+                const db = offset - oldest.bytes;
+                const rate = dt > 0 && db > 0 ? db / dt : 0;
+                const eta = rate > 0 ? (total - offset) / rate : NaN;
+                onProgress(offset, total, rate, eta);
+                if (!done) lastReport = now;
+            };
+
             try {
                 while (true) {
                     const { done, value } = await reader.read();
@@ -1924,16 +1943,37 @@ self.onmessage = async function (e) {
                     if (state.cancelRequested) throw new Error('Cancelled during file read.');
                     out.set(value, offset);
                     offset += value.byteLength;
-                    const pct = total > 0 ? Math.floor(offset / total * 20) : 0; // 5% ticks
-                    if (pct !== lastReport) {
-                        lastReport = pct;
-                        onProgress(offset, total);
-                    }
+                    const now = performance.now();
+                    samples.push({ t: now, bytes: offset });
+                    if (now - lastReport >= UPDATE_INTERVAL_MS) emit(now, false);
                 }
             } finally {
                 try { reader.releaseLock(); } catch (_) {}
             }
+            emit(performance.now(), true);
             return out;
+        }
+
+        // Format bytes/sec as "1.2 MB/s" (or KB/s for small values).
+        function formatRate(bps) {
+            if (!isFinite(bps) || bps <= 0) return '';
+            if (bps >= 1048576) return `${(bps / 1048576).toFixed(1)} MB/s`;
+            if (bps >= 1024) return `${(bps / 1024).toFixed(1)} KB/s`;
+            return `${bps.toFixed(0)} B/s`;
+        }
+
+        // Format seconds as "5s" / "3m 12s" / "1h 04m".
+        function formatEta(sec) {
+            if (!isFinite(sec) || sec < 0) return '';
+            if (sec < 60) return `~${Math.ceil(sec)}s`;
+            if (sec < 3600) {
+                const m = Math.floor(sec / 60);
+                const s = Math.round(sec - m * 60);
+                return `~${m}m ${s.toString().padStart(2, '0')}s`;
+            }
+            const h = Math.floor(sec / 3600);
+            const m = Math.round((sec - h * 3600) / 60);
+            return `~${h}h ${m.toString().padStart(2, '0')}m`;
         }
 
         async function ensureFileInFFmpegFS(ffmpeg, file) {
@@ -1948,10 +1988,16 @@ self.onmessage = async function (e) {
             const sizeMB = (file.size / 1024 / 1024).toFixed(1);
             log(`ffmpeg: reading ${sizeMB} MB from disk...`);
             const tRead = performance.now();
-            const data = await readFileWithProgress(file, (read, total) => {
-                const pct = Math.round(read / total * 100);
+            const data = await readFileWithProgress(file, (read, total, rate, eta) => {
+                const pct = total > 0 ? (read / total * 100).toFixed(1) : '0.0';
                 const readMB = (read / 1048576).toFixed(0);
-                $('progress').textContent = `Reading file: ${pct}% (${readMB}/${Math.round(total / 1048576)} MB)`;
+                const totalMB = Math.round(total / 1048576);
+                const parts = [`Reading: ${pct}%`, `${readMB} / ${totalMB} MB`];
+                const rateStr = formatRate(rate);
+                if (rateStr) parts.push(rateStr);
+                const etaStr = formatEta(eta);
+                if (etaStr) parts.push(etaStr);
+                $('progress').textContent = parts.join(' · ');
             });
             log(`ffmpeg: read ${sizeMB} MB in ${((performance.now() - tRead) / 1000).toFixed(1)}s. Copying to virtual FS...`);
 
