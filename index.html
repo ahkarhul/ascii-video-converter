@@ -3363,6 +3363,22 @@ ${dataBlock}
             const userStartTime = parseTimeMS(els.startTime.value) || 0;
             const userEndTime = parseTimeMS(els.endTime.value) || state.videoDuration;
 
+            // Clamp encoded video to the user's requested duration. ffmpeg's
+            // -ss/-t fast-seek occasionally hands us a couple extra frames at
+            // the boundary; left unclamped, that produces a video track ~150ms
+            // longer than the audio track (which is sample-accurate to the
+            // requested range), causing a visible end-of-clip A/V mismatch.
+            // Min with frames.length so a short audio stream doesn't push us
+            // past what was actually decoded.
+            const requestedDuration = userEndTime - userStartTime;
+            const targetFrameCount = (requestedDuration > 0)
+                ? Math.min(state.frames.length, Math.round(requestedDuration * fps))
+                : state.frames.length;
+            if (targetFrameCount < state.frames.length) {
+                log(`MP4: clamping video to ${targetFrameCount} frames (${(targetFrameCount/fps).toFixed(2)}s) — ` +
+                    `decoded ${state.frames.length}, requested ${requestedDuration.toFixed(2)}s.`);
+            }
+
             // ---------- Audio decode (both paths need this) ----------
             let audioBuffer = null;
             let audioAlreadyClipped = false;
@@ -3419,7 +3435,7 @@ ${dataBlock}
                 log('WebCodecs has no H.264 encoder available (Firefox ships decode-only).');
                 log('Falling back to ffmpeg.wasm libx264 encoder.');
                 await exportMP4ViaFFmpeg({
-                    frames: state.frames, audioBuffer, audioAlreadyClipped,
+                    frames: state.frames.slice(0, targetFrameCount), audioBuffer, audioAlreadyClipped,
                     userStartTime, userEndTime, qualityBitrate, cw, ch, fps,
                 });
                 return;
@@ -3489,13 +3505,13 @@ ${dataBlock}
                 gridW, gridH,
             };
             const frameDurationUs = 1_000_000 / fps;
-            for (let i = 0; i < state.frames.length; i++) {
+            for (let i = 0; i < targetFrameCount; i++) {
                 renderFrameToCanvas(state.frames[i], canvas, renderOpts);
                 const vFrame = new VideoFrame(canvas, { timestamp: i * frameDurationUs });
                 videoEncoder.encode(vFrame, { keyFrame: i % fps === 0 });
                 vFrame.close();
                 if (i % 10 === 0) {
-                    $('exportProgress').textContent = `Encoding video: ${Math.round((i / state.frames.length) * 100)}%`;
+                    $('exportProgress').textContent = `Encoding video: ${Math.round((i / targetFrameCount) * 100)}%`;
                     await new Promise(r => setTimeout(r, 0));
                 }
             }
@@ -3509,7 +3525,7 @@ ${dataBlock}
             if (videoChunkCount === 0) {
                 log(`WebCodecs produced 0 video chunks${videoEncoderError ? ` (${videoEncoderError.message || videoEncoderError})` : ''}. Falling back to ffmpeg.wasm libx264 encoder.`);
                 await exportMP4ViaFFmpeg({
-                    frames: state.frames, audioBuffer, audioAlreadyClipped,
+                    frames: state.frames.slice(0, targetFrameCount), audioBuffer, audioAlreadyClipped,
                     userStartTime, userEndTime, qualityBitrate, cw, ch, fps,
                 });
                 return;
@@ -3517,8 +3533,11 @@ ${dataBlock}
 
             if (audioConfig && audioBuffer) {
                 $('exportProgress').textContent = 'Encoding audio...';
+                // Match audio duration to the (possibly clamped) video duration
+                // so the two tracks end on the same frame instead of audio
+                // cutting out 100-150ms early.
                 const audioStart = audioAlreadyClipped ? 0 : userStartTime;
-                const audioEnd = audioAlreadyClipped ? audioBuffer.duration : userEndTime;
+                const audioEnd = audioStart + (targetFrameCount / fps);
                 try {
                     await encodeAudioToMuxer(audioBuffer, audioConfig, muxer, audioStart, audioEnd);
                 } catch (e) {
@@ -3544,13 +3563,16 @@ ${dataBlock}
             const chunkFrameLimit = Math.max(fps, Math.floor(MEMFS_RAW_BUDGET_BYTES / frameBytes));
 
             if (frames.length <= chunkFrameLimit) {
-                // Single-pass — fits in one encode.
+                // Single-pass — fits in one encode. segmentEndSec is derived
+                // from frames.length (which has already been clamped by the
+                // caller) so the audio slice matches the actual encoded video
+                // duration, not what the user originally requested.
                 log(`Single-pass MP4 encode: ${frames.length} frames (~${(frames.length * frameBytes / 1024 / 1024).toFixed(0)} MB raw).`);
                 await encodeMP4Segment({
                     ffmpeg, frames, frameStartIdx: 0,
                     audioBuffer, audioAlreadyClipped,
                     segmentStartSec: userStartTime,
-                    segmentEndSec: userEndTime,
+                    segmentEndSec: userStartTime + frames.length / fps,
                     outputName: 'output.mp4',
                     cw, ch, fps, qualityBitrate,
                 });
