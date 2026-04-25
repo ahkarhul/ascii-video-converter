@@ -930,7 +930,13 @@
                                        title="Accepts seconds (83.5) or M:SS (1:23.5) or H:MM:SS">
                             </div>
                         </div>
-                        <button id="useFullBtn" class="btn-sm" style="margin-top: 0.625rem;">Use Full Video</button>
+                        <div class="grid-2" style="margin-top: 0.625rem;">
+                            <button id="useFullBtn" class="btn-sm">Use Full Video</button>
+                            <button id="useSourceBtn" class="btn-sm"
+                                    title="Copy the source video player's current time into the focused field (Start by default; falls back to 0:00 before the player loads)">
+                                Source Video Time
+                            </button>
+                        </div>
                         <div id="chunkWarning" class="help-text warn hidden"></div>
                     </div>
 
@@ -1408,7 +1414,8 @@ self.onmessage = async function (e) {
             stepFwdBtn: $('stepFwdBtn'), jumpFwdBtn: $('jumpFwdBtn'),
             exportBtn: $('exportBtn'), exportFormat: $('exportFormat'),
             mp4Quality: $('mp4Quality'), mp4AudioBox: $('mp4AudioBox'), includeAudio: $('includeAudio'),
-            useFullBtn: $('useFullBtn'), startTime: $('startTime'), endTime: $('endTime'),
+            useFullBtn: $('useFullBtn'), useSourceBtn: $('useSourceBtn'),
+            startTime: $('startTime'), endTime: $('endTime'),
             chunkWarning: $('chunkWarning'),
             videoPlayer: $('videoPlayer'), displayCanvas: $('displayCanvas'),
             videoFallbackNotice: $('videoFallbackNotice'),
@@ -2594,6 +2601,21 @@ self.onmessage = async function (e) {
         els.useFullBtn.onclick = () => {
             els.startTime.value = formatTimeMS(0, 1);
             els.endTime.value = formatTimeMS(state.videoDuration, 1);
+            updateChunkWarning();
+        };
+
+        // "Source Video Time" copies the source player's current time into
+        // whichever time-range field was focused last (Start by default).
+        // If the player hasn't loaded yet (or the source can't decode at
+        // all), we fall back to 0 rather than silently doing nothing.
+        let activeTimeInput = els.startTime;
+        els.startTime.addEventListener('focus', () => { activeTimeInput = els.startTime; });
+        els.endTime.addEventListener('focus',   () => { activeTimeInput = els.endTime; });
+        els.useSourceBtn.onclick = () => {
+            const v = els.videoPlayer;
+            const t = (v && v.readyState >= 1 && isFinite(v.currentTime)) ? v.currentTime : 0;
+            activeTimeInput.value = formatTimeMS(t, 1);
+            activeTimeInput.focus();
             updateChunkWarning();
         };
 
