@@ -630,36 +630,79 @@
 
         /* Strips inside .ascii-box directly under the canvas — controls feel
            attached to the output they affect, and the left settings sidebar
-           stays uncluttered. Each .canvas-bar is one of these strips
-           (playback / grade / export); each variant adds its own inner
-           layout. Horizontal on wide screens, wraps to a stack via flex-wrap
-           when the column gets narrow. */
+           stays uncluttered. The transport row gets its own .canvas-bar; the
+           export + grade row sit side-by-side in a single .canvas-bar so they
+           share one separator and split the width 50/50 on wide viewports
+           (collapses to a stack under 760px). */
         .canvas-bar {
             margin-top: 1rem;
             padding-top: 0.875rem;
             border-top: 1px solid var(--border);
         }
+        .split-bar {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1.25rem 2rem;
+        }
+        @media (min-width: 760px) {
+            .split-bar { grid-template-columns: 1fr 1fr; }
+        }
+        .split-bar > * { min-width: 0; }
 
-        .playback-bar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
-        .playback-bar #playBtn { flex: 0 0 auto; }
-        .playback-bar #resetBtn { flex: 0 0 auto; padding: 0.55rem 0.85rem; }
-        .playback-bar #scrubber { flex: 1 1 200px; min-width: 150px; margin: 0; }
+        /* Transport: 6 square icon buttons in a tight cluster, scrubber
+           takes the rest, frame counter on the right. The base button rule
+           sets width:100%; .transport-btn explicitly resets that so the
+           buttons are sized by the .transport flex layout, not stretched. */
+        .playback-bar { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; }
+        .transport { display: inline-flex; gap: 0.25rem; flex: 0 0 auto; }
+        .transport-btn {
+            width: 2.25rem; height: 2.25rem; padding: 0;
+            font-size: 1rem; line-height: 1;
+            display: inline-flex; align-items: center; justify-content: center;
+            flex: 0 0 auto;
+        }
+        .transport-play {
+            background: var(--phos-hot);
+            color: var(--bg-void);
+            border-color: var(--phos-hot);
+            box-shadow: 0 0 14px rgba(0, 255, 100, 0.35);
+            font-weight: 800;
+        }
+        .transport-play:hover:not(:disabled) {
+            background: var(--phos-max);
+            color: var(--bg-void);
+            box-shadow: 0 0 22px rgba(0, 255, 100, 0.6);
+        }
+        .playback-bar #scrubber { flex: 1 1 240px; min-width: 160px; margin: 0; }
         .playback-bar #frameCounter { flex: 0 0 auto; margin-top: 0; }
 
-        .grade-bar { display: flex; flex-wrap: wrap; gap: 0.75rem 1rem; align-items: end; }
-        .grade-control { display: flex; flex-direction: column; gap: 0.25rem; flex: 1 1 140px; min-width: 120px; }
-        .grade-control label { font-size: 0.6875rem; color: var(--phos); display: flex; justify-content: space-between; gap: 0.5rem; }
+        /* Grade: stacked sliders in a label / slider / value 3-col grid,
+           plus a footer row for bg picker + reset. */
+        .grade-bar { display: flex; flex-direction: column; gap: 0.5rem; }
+        .grade-control {
+            display: grid;
+            grid-template-columns: 5.5rem 1fr 2.5rem;
+            align-items: center;
+            gap: 0.625rem;
+        }
+        .grade-control label,
+        .grade-footer label { font-size: 0.6875rem; color: var(--phos); }
         .grade-control input[type="range"] { margin: 0; }
-        .grade-num { color: var(--phos-max); font-variant-numeric: tabular-nums; }
-        .grade-bg { flex: 0 0 auto; min-width: 0; }
-        .grade-bg input[type="color"] { width: 3rem; height: 1.75rem; }
-        .grade-reset { flex: 0 0 auto; align-self: end; }
+        .grade-num { color: var(--phos-max); font-variant-numeric: tabular-nums; font-size: 0.6875rem; text-align: right; }
+        .grade-footer { display: flex; align-items: center; gap: 0.625rem; margin-top: 0.25rem; }
+        .grade-footer input[type="color"] { width: 3rem; height: 1.75rem; }
+        .grade-reset {
+            margin-left: auto;
+            width: 2.25rem; height: 2.25rem; padding: 0;
+            font-size: 1rem; line-height: 1;
+            display: inline-flex; align-items: center; justify-content: center;
+            flex: 0 0 auto;
+        }
 
-        .export-bar > * + * { margin-top: 0.5rem; }
-        .export-row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
-        .export-row #exportFormat { flex: 1 1 220px; min-width: 180px; }
-        .export-row #mp4Quality { flex: 1 1 160px; min-width: 140px; }
-        .export-row #exportBtn { flex: 0 0 auto; }
+        /* Export: vertical stack — format, optional sub-options, primary CTA, progress. */
+        .export-bar { display: flex; flex-direction: column; gap: 0.5rem; }
+        .export-bar select { width: 100%; }
+        .export-bar #exportBtn { width: 100%; margin-top: 0.25rem; }
 
         .hidden { display: none !important; }
 
@@ -947,34 +990,20 @@
                         <canvas id="displayCanvas" class="preview"></canvas>
 
                         <div id="playbackBox" class="canvas-bar playback-bar">
-                            <button id="playBtn">▶ PLAY</button>
-                            <button id="resetBtn">⏮</button>
+                            <div class="transport">
+                                <button id="resetBtn" class="transport-btn" title="Reset to start">↺</button>
+                                <button id="jumpBackBtn" class="transport-btn" title="Back 1s (Shift+←)">«</button>
+                                <button id="stepBackBtn" class="transport-btn" title="Previous frame (←)">‹</button>
+                                <button id="playBtn" class="transport-btn transport-play" title="Play / Pause (Space)">▶</button>
+                                <button id="stepFwdBtn" class="transport-btn" title="Next frame (→)">›</button>
+                                <button id="jumpFwdBtn" class="transport-btn" title="Forward 1s (Shift+→)">»</button>
+                            </div>
                             <input type="range" id="scrubber" min="0" max="0" value="0">
                             <div id="frameCounter" class="status-line"></div>
                         </div>
 
-                        <div id="colorGradeBox" class="canvas-bar grade-bar">
-                            <div id="cgSatRow" class="grade-control">
-                                <label>Saturation <span id="cgSatValue" class="grade-num">1.00</span></label>
-                                <input type="range" id="cgSat" min="0" max="2" step="0.05" value="1">
-                            </div>
-                            <div class="grade-control">
-                                <label>Brightness <span id="cgBrValue" class="grade-num">0.00</span></label>
-                                <input type="range" id="cgBr" min="-1" max="1" step="0.05" value="0">
-                            </div>
-                            <div class="grade-control">
-                                <label>Contrast <span id="cgCtValue" class="grade-num">1.00</span></label>
-                                <input type="range" id="cgCt" min="0" max="2" step="0.05" value="1">
-                            </div>
-                            <div class="grade-control grade-bg">
-                                <label>Background</label>
-                                <input type="color" id="cgBg" value="#000000">
-                            </div>
-                            <button id="cgReset" class="btn-sm grade-reset">↺ RESET</button>
-                        </div>
-
-                        <div id="exportBox" class="canvas-bar export-bar">
-                            <div class="export-row">
+                        <div class="canvas-bar split-bar">
+                            <div id="exportBox" class="export-bar">
                                 <select id="exportFormat">
                                     <option value="txt">Current Frame · Plain (.txt)</option>
                                     <option value="ans">Current Frame · ANSI colored (.ans)</option>
@@ -988,21 +1017,44 @@
                                     <option value="medium">Medium bitrate</option>
                                     <option value="low">Low bitrate</option>
                                 </select>
+                                <div id="mp4AudioBox" class="hidden">
+                                    <label class="checkbox-row">
+                                        <input type="checkbox" id="includeAudio" checked>
+                                        <span>Include audio</span>
+                                    </label>
+                                    <div class="help-text">
+                                        Tries the browser's native audio decoder first, falls
+                                        back to ffmpeg.wasm when it can't read the container
+                                        (common for MKV/AVI). ffmpeg is already loaded by the
+                                        time you reach Export, so this is fast.
+                                    </div>
+                                </div>
                                 <button id="exportBtn" class="btn-primary">↓ EXPORT</button>
+                                <div id="exportProgress" class="status-line"></div>
                             </div>
-                            <div id="mp4AudioBox" class="hidden">
-                                <label class="checkbox-row">
-                                    <input type="checkbox" id="includeAudio" checked>
-                                    <span>Include audio</span>
-                                </label>
-                                <div class="help-text">
-                                    Tries the browser's native audio decoder first, falls
-                                    back to ffmpeg.wasm when it can't read the container
-                                    (common for MKV/AVI). ffmpeg is already loaded by the
-                                    time you reach Export, so this is fast.
+
+                            <div id="colorGradeBox" class="grade-bar">
+                                <div id="cgSatRow" class="grade-control">
+                                    <label for="cgSat">Saturation</label>
+                                    <input type="range" id="cgSat" min="0" max="2" step="0.05" value="1">
+                                    <span id="cgSatValue" class="grade-num">1.00</span>
+                                </div>
+                                <div class="grade-control">
+                                    <label for="cgBr">Brightness</label>
+                                    <input type="range" id="cgBr" min="-1" max="1" step="0.05" value="0">
+                                    <span id="cgBrValue" class="grade-num">0.00</span>
+                                </div>
+                                <div class="grade-control">
+                                    <label for="cgCt">Contrast</label>
+                                    <input type="range" id="cgCt" min="0" max="2" step="0.05" value="1">
+                                    <span id="cgCtValue" class="grade-num">1.00</span>
+                                </div>
+                                <div class="grade-footer">
+                                    <label for="cgBg">Background</label>
+                                    <input type="color" id="cgBg" value="#000000">
+                                    <button id="cgReset" class="btn-sm grade-reset" title="Reset color grade">↺</button>
                                 </div>
                             </div>
-                            <div id="exportProgress" class="status-line"></div>
                         </div>
                     </div>
 
@@ -1348,6 +1400,8 @@ self.onmessage = async function (e) {
             fileInput: $('fileInput'), uploadBtn: $('uploadBtn'),
             previewBtn: $('previewBtn'), convertBtn: $('convertBtn'), cancelBtn: $('cancelBtn'),
             playBtn: $('playBtn'), resetBtn: $('resetBtn'), scrubber: $('scrubber'),
+            jumpBackBtn: $('jumpBackBtn'), stepBackBtn: $('stepBackBtn'),
+            stepFwdBtn: $('stepFwdBtn'), jumpFwdBtn: $('jumpFwdBtn'),
             exportBtn: $('exportBtn'), exportFormat: $('exportFormat'),
             mp4Quality: $('mp4Quality'), mp4AudioBox: $('mp4AudioBox'), includeAudio: $('includeAudio'),
             useFullBtn: $('useFullBtn'), startTime: $('startTime'), endTime: $('endTime'),
@@ -2939,7 +2993,7 @@ self.onmessage = async function (e) {
             if (state.frames.length < 2) return;
             state.isPlaying = !state.isPlaying;
             if (state.isPlaying) {
-                els.playBtn.innerHTML = '⏸ PAUSE';
+                els.playBtn.innerHTML = '⏸';
                 setFooterStatus('PLAYING');
                 const interval = 1000 / state.settings.fps;
                 state.playbackInterval = setInterval(() => {
@@ -2949,22 +3003,39 @@ self.onmessage = async function (e) {
                     renderCurrentFrame();
                 }, interval);
             } else {
-                els.playBtn.innerHTML = '▶ PLAY';
+                els.playBtn.innerHTML = '▶';
                 setFooterStatus('READY');
                 clearInterval(state.playbackInterval);
             }
         };
-        els.resetBtn.onclick = () => {
-            state.currentFrame = 0;
-            if (state.isPlaying) els.playBtn.click();
-            els.scrubber.value = 0;
+
+        // Step / jump buttons all pause first; scrubbing while playing fights
+        // the playback timer and produces visible stutter, so the convention
+        // is "manual nav implies pause". 1-second jump = fps frames so the
+        // distance feels right regardless of frame rate.
+        function pausePlayback() { if (state.isPlaying) els.playBtn.click(); }
+        function setFrame(n) {
+            if (state.frames.length === 0) return;
+            const max = state.frames.length - 1;
+            state.currentFrame = Math.max(0, Math.min(max, n));
+            els.scrubber.value = state.currentFrame;
             renderCurrentFrame();
-        };
+        }
+        function jumpFrames() { return Math.max(1, Math.round(state.settings.fps)); }
+        els.resetBtn.onclick    = () => { pausePlayback(); setFrame(0); };
+        els.stepBackBtn.onclick = () => { pausePlayback(); setFrame(state.currentFrame - 1); };
+        els.stepFwdBtn.onclick  = () => { pausePlayback(); setFrame(state.currentFrame + 1); };
+        els.jumpBackBtn.onclick = () => { pausePlayback(); setFrame(state.currentFrame - jumpFrames()); };
+        els.jumpFwdBtn.onclick  = () => { pausePlayback(); setFrame(state.currentFrame + jumpFrames()); };
+
         els.scrubber.oninput = (e) => { state.currentFrame = parseInt(e.target.value); renderCurrentFrame(); };
         window.addEventListener('keydown', (e) => {
             const tag = e.target.tagName;
             if (tag === 'INPUT' || tag === 'SELECT' || tag === 'BUTTON') return;
-            if (e.code === 'Space' && state.frames.length > 1) { e.preventDefault(); els.playBtn.click(); }
+            if (state.frames.length < 2) return;
+            if (e.code === 'Space')      { e.preventDefault(); els.playBtn.click(); }
+            else if (e.code === 'ArrowLeft')  { e.preventDefault(); (e.shiftKey ? els.jumpBackBtn : els.stepBackBtn).click(); }
+            else if (e.code === 'ArrowRight') { e.preventDefault(); (e.shiftKey ? els.jumpFwdBtn  : els.stepFwdBtn).click(); }
         });
 
         // ==================== Export ====================
