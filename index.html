@@ -943,7 +943,7 @@
                     <div class="section">
                         <div class="stack">
                             <input type="file" id="fileInput" accept="video/*" class="hidden">
-                            <button id="uploadBtn" class="btn-primary">▲ UPLOAD VIDEO</button>
+                            <button id="uploadBtn" class="btn-primary">▲ LOAD VIDEO</button>
                             <button id="previewBtn" disabled>◉ SOURCE VIDEO FRAME</button>
                             <button id="convertBtn" class="btn-primary" disabled>▶▶ CONVERT RANGE</button>
                             <button id="cancelBtn" class="btn-alert hidden">✕ CANCEL</button>
@@ -1071,7 +1071,7 @@
                     <div id="welcomeBox" class="panel welcome">
                         <div class="icon">&gt; NO SOURCE</div>
                         <h3>WAITING FOR INPUT</h3>
-                        <p>Click the UPLOAD VIDEO button to pick a source. Any format ffmpeg can decode works — practically every common container and codec (MP4, MKV, AVI, WebM, MOV, TS, FLV, and many more). Tick "Prefer browser engine" to watch short clips play back during conversion.</p>
+                        <p>Click the LOAD VIDEO button to pick a source. Any format ffmpeg can decode works — practically every common container and codec (MP4, MKV, AVI, WebM, MOV, TS, FLV, and many more). Tick "Prefer browser engine" to watch short clips play back during conversion.</p>
                     </div>
                 </div>
             </div>
@@ -1094,6 +1094,16 @@
     </div>
 
     <script>
+        // Quick orientation for first-time visitors. Always emitted so the
+        // log opens with something useful instead of being empty until the
+        // first action.
+        const WORKFLOW_INTRO =
+            'This tool takes a source video and creates ASCII art — your original file is never altered, ' +
+            'all work happens locally in your browser. ' +
+            'Click LOAD VIDEO to pick a source, set the time range you want to export, then click CONVERT RANGE. ' +
+            'Watch progress in this window. The ASCII player appears below the canvas when the clip is ready — ' +
+            'use the controls under it to scrub, tune the look, and export.';
+
         if (!window.crossOriginIsolated) {
             setTimeout(() => {
                 const onPages = /\.github\.io$/i.test(location.hostname);
@@ -1105,8 +1115,11 @@
                     'Decoding and every export format still work — just not at full speed.\n\n' +
                     'For full performance, clone the repo and run: python3 http.server.py';
                 log(msg.replace(/\n+/g, ' '));
+                log(WORKFLOW_INTRO);
                 alert(msg);
             }, 0);
+        } else {
+            setTimeout(() => log(WORKFLOW_INTRO), 0);
         }
 
         // ffmpeg.wasm MEMFS is wasm32-bounded. This is a conservative ceiling for
