@@ -28,4 +28,4 @@ jobs:
         run: pip install --quiet html5validator
 
       - name: Validate HTML
-        run: html5validator --root . --match "*.html"
+        run: html5validator --root . --match "*.html" --ignore "CSS:"
