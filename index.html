@@ -245,6 +245,23 @@
             font-weight: 500;
         }
         label > span:not(.muted) { color: var(--phos-max); }
+        .width-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.5rem;
+            margin-bottom: 0.4rem;
+        }
+        .width-head label { margin: 0; }
+        .mini-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            margin: 0;
+            cursor: pointer;
+            flex: none;
+        }
+        .mini-toggle input[type="checkbox"] { width: auto; margin: 0; }
         label .muted {
             color: var(--phos-low);
             text-transform: none;
@@ -545,6 +562,76 @@
             background: var(--bg-sunken);
             outline: 1px solid var(--border);
             outline-offset: -1px;
+        }
+        .image-preview {
+            display: block;
+            width: 100%;
+            max-height: 16rem;
+            object-fit: contain;
+            background:
+                repeating-conic-gradient(var(--bg-sunken) 0% 25%, #04130a 0% 50%) 50% / 18px 18px,
+                var(--bg-sunken);
+            outline: 1px solid var(--border);
+            outline-offset: -1px;
+            image-rendering: pixelated;
+        }
+        /* ========== Drag-and-drop overlay ========== */
+        .drop-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 2000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+            background: rgba(3, 8, 5, 0.82);
+            backdrop-filter: blur(2px);
+            -webkit-backdrop-filter: blur(2px);
+        }
+        body.dragging .drop-overlay { display: flex; }
+        .drop-card {
+            text-align: center;
+            padding: clamp(2rem, 8vw, 4rem) clamp(2.5rem, 12vw, 6rem);
+            border: 1px dashed var(--border-hot);
+            background: rgba(8, 20, 10, 0.6);
+            box-shadow: var(--glow-hot), inset 0 0 60px rgba(0, 255, 100, 0.05);
+            animation: dropPulse 1.4s ease-in-out infinite;
+        }
+        @keyframes dropPulse {
+            50% { border-color: var(--phos-hot); box-shadow: 0 0 36px rgba(0,255,100,0.35), inset 0 0 80px rgba(0,255,100,0.08); }
+        }
+        .drop-glyph {
+            font-family: var(--font-hero);
+            font-size: clamp(2.5rem, 9vw, 4.5rem);
+            color: var(--phos-hot);
+            text-shadow: 0 0 22px var(--phos-hot);
+            line-height: 1;
+        }
+        .drop-title {
+            margin-top: 0.75rem;
+            font-family: var(--font-hero);
+            font-size: clamp(1.5rem, 5vw, 2.5rem);
+            color: var(--phos-max);
+            letter-spacing: 0.12em;
+        }
+        .drop-sub {
+            margin-top: 0.4rem;
+            font-size: 0.6875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+            color: var(--phos-dim);
+        }
+        /* ========== Reveal motion ========== */
+        @keyframes revealUp {
+            from { opacity: 0; transform: translateY(8px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        #asciiBox:not(.hidden), #videoBox:not(.hidden), #logPanel {
+            animation: revealUp 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .drop-card { animation: none; }
+            #asciiBox:not(.hidden), #videoBox:not(.hidden), #logPanel { animation: none; }
         }
         .video-info {
             margin-top: 0.625rem;
@@ -868,9 +955,40 @@
             .footer { grid-template-columns: 1fr; gap: 0.6rem; text-align: left; }
             .footer-ticker { text-align: left; }
         }
+        /* ========== Polish: micro-interactions & responsive ========== */
+        button.btn-primary:hover:not(:disabled),
+        button.btn-sm:hover:not(:disabled) { transform: translateY(-1px); }
+        button.btn-primary:active:not(:disabled),
+        button:active:not(:disabled) { transform: translateY(0); }
+        .mode-toggle button { transition: background 0.18s ease, color 0.18s ease; }
+        .transport-btn { transition: all 0.14s ease; }
+        select, input[type="text"], input[type="number"] { transition: border-color 0.15s, box-shadow 0.15s, background 0.15s; }
+        .panel { transition: border-color 0.2s ease; }
+
+        /* Tighten gutters / type as the viewport narrows */
+        @media (max-width: 640px) {
+            body { padding: 0 0.75rem; font-size: 12px; }
+            .header { padding: 1.25rem 0 0.875rem; }
+            .panel { padding: 1rem; }
+            .section + .section { margin-top: 1rem; }
+            .welcome { padding: 1.5rem 1.25rem; }
+            video, .image-preview { max-height: 12rem; }
+        }
+        @media (max-width: 420px) {
+            .grid-2 { grid-template-columns: 1fr; }
+            .transport { gap: 0.15rem; }
+            .transport-btn { padding: 0.4rem 0.45rem; }
+        }
     </style>
 </head>
 <body>
+    <div id="dropOverlay" class="drop-overlay" aria-hidden="true">
+        <div class="drop-card">
+            <div class="drop-glyph">[ &nbsp;&#9650;&nbsp; ]</div>
+            <div class="drop-title">DROP TO LOAD</div>
+            <div class="drop-sub">video &middot; png &middot; jpeg &middot; gif &middot; webp</div>
+        </div>
+    </div>
     <div class="container">
         <header class="header">
             <h1 class="header-title"><span class="bracket">[</span>ASCII<span class="bracket">]</span> VIDEO CONVERTER<span class="cursor"></span></h1>
@@ -885,8 +1003,13 @@
                         <h2>Rendering</h2>
                         <div class="stack">
                             <div>
-                                <label>Width: <span id="resValue">100</span> chars</label>
+                                <div class="width-head">
+                                    <label>Width: <span id="resValue">100</span> chars</label>
+                                    <label class="mini-toggle"><input type="checkbox" id="resOverride"><span class="muted">Override</span></label>
+                                </div>
                                 <input type="range" id="resolution" min="40" max="200" value="100">
+                                <input type="number" id="resolutionNum" class="hidden" min="8" max="1000" step="1" value="100"
+                                       title="Type any width in characters (8–1000). Very large values increase memory use and export time.">
                             </div>
                             <div>
                                 <label>Character Set</label>
@@ -896,25 +1019,25 @@
                                     <option value="blocks">Unicode Blocks (5)</option>
                                 </select>
                             </div>
-                            <div>
+                            <div id="fpsControl">
                                 <label>Frame Rate: <span id="fpsValue">15</span> fps</label>
                                 <input type="range" id="fps" min="5" max="30" value="15">
                             </div>
                             <div>
                                 <label>Color Mode</label>
                                 <div class="mode-toggle">
-                                    <button id="modeMono" class="active">Monochrome</button>
+                                    <button id="modeMono" class="active">Greyscale</button>
                                     <button id="modeColor" class="inactive">Full Color</button>
                                 </div>
                             </div>
                             <div id="monoColorBox">
-                                <label>Text Color <span class="muted">(Matrix green default)</span></label>
+                                <label>Tint <span class="muted">(white = neutral greyscale)</span></label>
                                 <input type="color" id="monoColor" value="#00ff00">
                             </div>
                         </div>
                     </div>
 
-                    <div class="section">
+                    <div class="section" id="timeRangeSection">
                         <h2>Time Range</h2>
                         <div class="grid-2">
                             <div>
@@ -942,8 +1065,8 @@
 
                     <div class="section">
                         <div class="stack">
-                            <input type="file" id="fileInput" accept="video/*" class="hidden">
-                            <button id="uploadBtn" class="btn-primary">▲ LOAD VIDEO</button>
+                            <input type="file" id="fileInput" accept="video/*,image/*" class="hidden">
+                            <button id="uploadBtn" class="btn-primary">▲ LOAD MEDIA</button>
                             <button id="previewBtn" disabled>◉ SOURCE VIDEO FRAME</button>
                             <button id="convertBtn" class="btn-primary" disabled>▶▶ CONVERT RANGE</button>
                             <button id="cancelBtn" class="btn-alert hidden">✕ CANCEL</button>
@@ -981,8 +1104,9 @@
                 <div class="stack">
                     <div id="sourceRow" class="source-row">
                         <div id="videoBox" class="panel hidden">
-                            <h3>Source Video</h3>
+                            <h3 id="sourceTitle">Source Video</h3>
                             <video id="videoPlayer" controls></video>
+                            <img id="imagePreview" class="image-preview hidden" alt="Source image preview" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==">
                             <div id="videoInfo" class="video-info"></div>
                             <details id="videoFallbackNotice" class="video-fallback-notice hidden" open>
                                 <summary><strong>This browser can't play this container/codec.</strong></summary>
@@ -1017,10 +1141,12 @@
                                 <select id="exportFormat">
                                     <option value="txt">Current Frame · Plain (.txt)</option>
                                     <option value="ans">Current Frame · ANSI colored (.ans)</option>
+                                    <option value="html">Current Frame · Styled (.html)</option>
+                                    <option value="png">Current Frame · Image (.png)</option>
                                     <option value="gif-single" selected>Current Frame · Image (.gif)</option>
-                                    <option value="sh">Terminal Animation (.sh)</option>
-                                    <option value="mp4">MP4 Video</option>
-                                    <option value="gif">Animated GIF</option>
+                                    <option value="sh" data-video-only>Terminal Animation (.sh)</option>
+                                    <option value="mp4" data-video-only>MP4 Video</option>
+                                    <option value="gif" data-video-only>Animated GIF</option>
                                 </select>
                                 <select id="mp4Quality" class="hidden">
                                     <option value="high" selected>High bitrate (crisp)</option>
@@ -1071,7 +1197,7 @@
                     <div id="welcomeBox" class="panel welcome">
                         <div class="icon">&gt; NO SOURCE</div>
                         <h3>WAITING FOR INPUT</h3>
-                        <p>Click the LOAD VIDEO button to pick a source. Any format ffmpeg can decode works — practically every common container and codec (MP4, MKV, AVI, WebM, MOV, TS, FLV, and many more). Tick "Prefer browser engine" to watch short clips play back during conversion.</p>
+                        <p>Drop a file anywhere, or click LOAD MEDIA to pick a source. <strong>Video</strong> — practically any container or codec ffmpeg can decode (MP4, MKV, AVI, WebM, MOV, TS, FLV, and more). <strong>Images</strong> — PNG, JPEG, GIF, WebP. Everything runs locally in your browser; your file is never uploaded.</p>
                     </div>
                 </div>
             </div>
@@ -1098,10 +1224,10 @@
         // log opens with something useful instead of being empty until the
         // first action.
         const WORKFLOW_INTRO =
-            'This tool takes a source video and creates ASCII art — your original file is never altered, ' +
+            'This tool turns a source video or image into ASCII art — your original file is never altered, ' +
             'all work happens locally in your browser. ' +
-            'Click LOAD VIDEO to pick a source, set the time range you want to export, then click CONVERT RANGE. ' +
-            'Watch progress in this window. The ASCII player appears below the canvas when the clip is ready — ' +
+            'Drop a file anywhere (or click LOAD MEDIA), set a time range for video, then click CONVERT. ' +
+            'Watch progress in this window. The ASCII player appears below the canvas when it\'s ready — ' +
             'use the controls under it to scrub, tune the look, and export.';
 
         if (!window.crossOriginIsolated) {
@@ -1363,6 +1489,8 @@ self.onmessage = async function (e) {
         // ==================== State ====================
         const state = {
             file: null,
+            mediaType: null,       // 'video' | 'image'
+            imageBitmap: null,     // decoded still for the image path
             frames: [],
             framesEngine: null,  // 'browser' | 'ffmpeg'
             currentFrame: 0,
@@ -1431,6 +1559,9 @@ self.onmessage = async function (e) {
             startTime: $('startTime'), endTime: $('endTime'),
             chunkWarning: $('chunkWarning'),
             videoPlayer: $('videoPlayer'), displayCanvas: $('displayCanvas'),
+            imagePreview: $('imagePreview'), sourceTitle: $('sourceTitle'),
+            timeRangeSection: $('timeRangeSection'), fpsControl: $('fpsControl'),
+            uploadBtnEl: $('uploadBtn'),
             videoFallbackNotice: $('videoFallbackNotice'),
             modeMono: $('modeMono'), modeColor: $('modeColor'),
             monoColor: $('monoColor'), monoColorBox: $('monoColorBox'),
@@ -1701,12 +1832,48 @@ self.onmessage = async function (e) {
         syncUIFromState();
 
         // ==================== Settings Handlers ====================
-        $('resolution').oninput = (e) => {
-            state.settings.resolution = parseInt(e.target.value);
-            $('resValue').textContent = e.target.value;
+        // Width applies from both the slider (40–200) and the override number
+        // box (8–1000). One setter keeps state, both controls, and the readout
+        // in sync, and re-derives the grid / re-renders an open image.
+        function setResolution(val) {
+            if (!isFinite(val)) return;
+            val = Math.max(8, Math.min(1000, Math.round(val)));
+            state.settings.resolution = val;
+            $('resValue').textContent = val;
+            if (val >= 40 && val <= 200 && parseInt($('resolution').value, 10) !== val) {
+                $('resolution').value = val;
+            }
             recomputeAsciiDimsIfVideo();
+            refreshImageIfLoaded();
+        }
+        $('resolution').oninput = (e) => setResolution(parseInt(e.target.value, 10));
+        // Live readout while typing; apply (recompute/re-render) on commit so a
+        // multi-digit entry doesn't reconvert on every keystroke.
+        $('resolutionNum').oninput = (e) => {
+            const v = parseInt(e.target.value, 10);
+            if (isFinite(v)) $('resValue').textContent = Math.max(8, Math.min(1000, v));
         };
-        $('charSet').onchange = (e) => { state.settings.charSet = e.target.value; };
+        $('resolutionNum').onchange = (e) => {
+            let v = parseInt(e.target.value, 10);
+            if (!isFinite(v)) v = state.settings.resolution;
+            v = Math.max(8, Math.min(1000, v));
+            e.target.value = v;
+            setResolution(v);
+        };
+        $('resOverride').onchange = (e) => {
+            const on = e.target.checked;
+            $('resolution').classList.toggle('hidden', on);
+            $('resolutionNum').classList.toggle('hidden', !on);
+            if (on) {
+                $('resolutionNum').value = state.settings.resolution;
+                $('resolutionNum').focus();
+                $('resolutionNum').select();
+            } else {
+                // Leaving override: snap back into the slider's representable range.
+                setResolution(Math.max(40, Math.min(200, state.settings.resolution)));
+            }
+        };
+        $('charSet').onchange = (e) => { state.settings.charSet = e.target.value; refreshImageIfLoaded(); };
         $('fps').oninput = (e) => {
             state.settings.fps = parseInt(e.target.value);
             $('fpsValue').textContent = e.target.value;
@@ -1827,6 +1994,23 @@ self.onmessage = async function (e) {
             els.mp4Quality.classList.toggle('hidden', !isMp4);
             els.mp4AudioBox.classList.toggle('hidden', !isMp4);
         };
+        // Hide video-only export formats (animation .sh / MP4 / animated GIF)
+        // when the source is a single image, and make sure the current
+        // selection is still valid afterwards.
+        function updateExportOptions(type) {
+            const isImage = type === 'image';
+            const sel = els.exportFormat;
+            let needReset = false;
+            for (const opt of sel.options) {
+                if (opt.dataset.videoOnly !== undefined) {
+                    opt.hidden = isImage;
+                    opt.disabled = isImage;
+                    if (isImage && opt.selected) needReset = true;
+                }
+            }
+            if (needReset) sel.value = 'png';
+            sel.onchange({ target: { value: sel.value } });
+        }
         $('mp4Quality').onchange = (e) => { state.settings.quality = e.target.value; };
 
         // ==================== Core Math ====================
@@ -2495,7 +2679,44 @@ self.onmessage = async function (e) {
         els.fileInput.onchange = (e) => {
             const file = e.target.files[0];
             if (!file) return;
+            handleIncomingFile(file);
+            // Allow re-selecting the same file later.
+            e.target.value = '';
+        };
+
+        function isImageFile(file) {
+            return (file.type && file.type.startsWith('image/')) ||
+                   /\.(png|jpe?g|gif|webp|bmp|avif)$/i.test(file.name || '');
+        }
+
+        // Single entry point for both the file picker and drag-and-drop.
+        function handleIncomingFile(file) {
+            if (isImageFile(file)) loadImageFile(file);
+            else loadVideoFile(file);
+        }
+
+        // Flip the control panel between video and image affordances.
+        // Image stills have no time range, frame rate, audio, or
+        // browser-vs-ffmpeg engine choice — hide what doesn't apply.
+        function applyMediaModeUI(type) {
+            const isImage = type === 'image';
+            els.timeRangeSection.classList.toggle('hidden', isImage);
+            els.fpsControl.classList.toggle('hidden', isImage);
+            els.previewBtn.classList.toggle('hidden', isImage);
+            els.videoPlayer.classList.toggle('hidden', isImage);
+            els.imagePreview.classList.toggle('hidden', !isImage);
+            els.sourceTitle.textContent = isImage ? 'Source Image' : 'Source Video';
+            els.convertBtn.textContent = isImage ? '▶▶ CONVERT IMAGE' : '▶▶ CONVERT RANGE';
+            els.uploadBtnEl.textContent = '▲ LOAD MEDIA';
+            updateExportOptions(type);
+        }
+
+        function loadVideoFile(file) {
+            state.mediaType = 'video';
+            state.imageBitmap = null;
             state.file = file;
+            resetAsciiOutput();
+            applyMediaModeUI('video');
             // Invalidate ffmpeg FS cache — new file.
             state.ffmpegInputName = null;
             state.ffmpegInputSize = 0;
@@ -2538,6 +2759,91 @@ self.onmessage = async function (e) {
                 );
             }, 3000);
         };
+
+        async function loadImageFile(file) {
+            state.mediaType = 'image';
+            state.file = file;
+            resetAsciiOutput();
+            applyMediaModeUI('image');
+
+            // Release prior source / decoded bitmap and stand down any
+            // video-decode machinery left over from a previous video load.
+            if (state.sourceObjectURL) { URL.revokeObjectURL(state.sourceObjectURL); state.sourceObjectURL = null; }
+            if (state.imageBitmap) { try { state.imageBitmap.close(); } catch (_) {} state.imageBitmap = null; }
+            if (state.fallbackWatchdog) { clearTimeout(state.fallbackWatchdog); state.fallbackWatchdog = null; }
+            state.fallbackStartedFor = null;
+            state.ffmpegInputName = null;
+            state.ffmpegInputSize = 0;
+            els.videoFallbackNotice.classList.add('hidden');
+            try { els.videoPlayer.removeAttribute('src'); els.videoPlayer.load(); } catch (_) {}
+
+            const url = URL.createObjectURL(file);
+            state.sourceObjectURL = url;
+            els.imagePreview.src = url;
+
+            $('welcomeBox').classList.add('hidden');
+            $('videoBox').classList.remove('hidden');
+            els.previewBtn.disabled = true;
+            els.convertBtn.disabled = true;
+            log(`Loaded image: ${file.name} (${(file.size / 1024).toFixed(1)} KB, ${file.type || 'unknown type'})`);
+
+            try {
+                // createImageBitmap decodes the first frame of animated GIFs.
+                const bmp = await createImageBitmap(file);
+                if (state.file !== file) { try { bmp.close(); } catch (_) {} return; }
+                state.imageBitmap = bmp;
+                state.videoAspect = bmp.height / bmp.width;
+                state.videoDuration = 0;
+                const dims = computeAsciiDims(state.videoAspect, state.settings.resolution);
+                state.asciiW = dims.asciiW;
+                state.asciiH = dims.asciiH;
+                updateImageInfo();
+                els.convertBtn.disabled = false;
+                log(`Image decoded: ${bmp.width}×${bmp.height}. ASCII grid ${state.asciiW}×${state.asciiH}.`);
+            } catch (e) {
+                log(`Image decode failed: ${e.message}`);
+                alert('Could not decode this image: ' + e.message);
+            }
+        }
+
+        function updateImageInfo() {
+            const bmp = state.imageBitmap;
+            if (!bmp) return;
+            $('videoInfo').textContent =
+                `${bmp.width}×${bmp.height} source · ${state.asciiW}×${state.asciiH} ASCII grid`;
+        }
+
+        // Re-derive the ASCII grid and re-render when Width / Character Set
+        // change while an image is loaded — conversion is instant for a still,
+        // so there's no reason to make the user click Convert again.
+        function refreshImageIfLoaded() {
+            if (state.mediaType !== 'image' || !state.imageBitmap) return;
+            const dims = computeAsciiDims(state.videoAspect, state.settings.resolution);
+            state.asciiW = dims.asciiW;
+            state.asciiH = dims.asciiH;
+            updateImageInfo();
+            if (state.frames.length) convertImage();
+        }
+
+        // The image equivalent of the video extract+convert pass: draw the
+        // decoded bitmap into an oversampled offscreen canvas and run it
+        // through the same imageDataToAsciiFrame() the video browser-path uses.
+        function convertImage() {
+            if (!state.imageBitmap) throw new Error('no image loaded');
+            const bmp = state.imageBitmap;
+            const canvas = new OffscreenCanvas(state.asciiW * 4, state.asciiH * 4);
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const frame = imageDataToAsciiFrame(imageData, state.asciiW, state.asciiH, state.settings.charSet);
+            state.frames = [frame];
+            state.framesEngine = 'browser';
+            state.currentFrame = 0;
+            setEngineBadge('browser');
+            showAsciiOutput();
+            updateScrubber();
+            renderCurrentFrame();
+        }
 
         els.videoPlayer.onloadedmetadata = () => {
             const v = els.videoPlayer;
@@ -2695,6 +3001,25 @@ self.onmessage = async function (e) {
         };
 
         els.convertBtn.onclick = async () => {
+            if (state.mediaType === 'image') {
+                els.convertBtn.disabled = true;
+                els.convertBtn.textContent = '◐ CONVERTING...';
+                setFooterStatus('CONVERTING');
+                try {
+                    convertImage();
+                    log(`Image converted: ${state.asciiW}×${state.asciiH} ASCII.`);
+                    $('progress').textContent = 'Ready: 1 frame (image)';
+                } catch (err) {
+                    console.error(err);
+                    log(`Conversion failed: ${err.message}`);
+                    alert('Conversion failed: ' + err.message);
+                } finally {
+                    els.convertBtn.disabled = false;
+                    els.convertBtn.textContent = '▶▶ CONVERT IMAGE';
+                    setFooterStatus('READY');
+                }
+                return;
+            }
             const v = els.videoPlayer;
             // We can proceed without <video> metadata as long as ffmpeg is the engine.
             if (!v.duration && state.settings.preferBrowser) {
@@ -2999,6 +3324,17 @@ self.onmessage = async function (e) {
             return { lut, sat, isDefault };
         }
 
+        // Monochrome shading: map a cell's 0..255 source luminance to a 0..1
+        // intensity used to scale the chosen tint. A lifted floor keeps the
+        // faintest glyphs from sinking into the background; the gentle gamma
+        // lifts midtones so the result reads as graded greyscale rather than
+        // a flat single-color fill.
+        const MONO_FLOOR = 0.16;
+        function monoShadeFactor(lum) {
+            const n = lum < 0 ? 0 : lum > 255 ? 255 : lum;
+            return MONO_FLOOR + (1 - MONO_FLOOR) * Math.pow(n / 255, 0.85);
+        }
+
         function renderFrameToCanvas(frame, canvas, opts) {
             const { charW, charH, colorMode, monoColor, gridW, gridH } = opts;
             const grade = state.colorGrade;
@@ -3016,24 +3352,38 @@ self.onmessage = async function (e) {
             const { lut, sat, isDefault } = buildGrader(grade);
 
             if (colorMode === 'mono') {
-                // Apply brightness/contrast (and saturation, even though it's
-                // a no-op on a single color when sat=1) once to the mono color.
-                let [r, g, b] = hexToRgb(monoColor);
+                // Single-hue greyscale: take the chosen tint (brightness/
+                // contrast/saturation graded once), then draw each cell at an
+                // intensity derived from its own source luminance so shading
+                // — not just glyph density — carries the tonal range.
+                let [br0, bg0, bb0] = hexToRgb(monoColor);
                 if (!isDefault) {
-                    r = lut[r]; g = lut[g]; b = lut[b];
+                    br0 = lut[br0]; bg0 = lut[bg0]; bb0 = lut[bb0];
                     if (sat !== 1) {
-                        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-                        r = Math.max(0, Math.min(255, Math.round(lum + (r - lum) * sat)));
-                        g = Math.max(0, Math.min(255, Math.round(lum + (g - lum) * sat)));
-                        b = Math.max(0, Math.min(255, Math.round(lum + (b - lum) * sat)));
+                        const lum = 0.299 * br0 + 0.587 * bg0 + 0.114 * bb0;
+                        br0 = Math.max(0, Math.min(255, Math.round(lum + (br0 - lum) * sat)));
+                        bg0 = Math.max(0, Math.min(255, Math.round(lum + (bg0 - lum) * sat)));
+                        bb0 = Math.max(0, Math.min(255, Math.round(lum + (bb0 - lum) * sat)));
                     }
                 }
-                ctx.fillStyle = `rgb(${r},${g},${b})`;
+                // Precompute one shaded variant of the tint per graded luminance
+                // level so the inner loop is a table lookup, not per-cell math.
+                const shade = new Array(256);
+                for (let i = 0; i < 256; i++) {
+                    const f = monoShadeFactor(isDefault ? i : lut[i]);
+                    shade[i] = `rgb(${Math.round(br0 * f)},${Math.round(bg0 * f)},${Math.round(bb0 * f)})`;
+                }
+                let cur = null;
                 for (let y = 0; y < rows.length; y++) {
                     const row = rows[y];
                     for (let x = 0; x < row.length; x++) {
                         const ch = row[x];
-                        if (ch !== ' ') ctx.fillText(ch, x * charW, y * charH);
+                        if (ch === ' ') continue;
+                        const idx = (y * gridW + x) * 3;
+                        const lum = 0.299 * colors[idx] + 0.587 * colors[idx + 1] + 0.114 * colors[idx + 2];
+                        const c = shade[Math.max(0, Math.min(255, Math.round(lum)))];
+                        if (c !== cur) { ctx.fillStyle = c; cur = c; }
+                        ctx.fillText(ch, x * charW, y * charH);
                     }
                 }
             } else {
@@ -3085,6 +3435,23 @@ self.onmessage = async function (e) {
             $('asciiBox').classList.remove('hidden');
             // Make sure the MP4 sub-options track the current format selection.
             els.exportFormat.onchange({ target: { value: els.exportFormat.value } });
+        }
+
+        // Wipe any previous conversion so loading new media never leaves the
+        // old ASCII result on screen (which reads as "nothing happened").
+        function resetAsciiOutput() {
+            pausePlayback();
+            state.frames = [];
+            state.currentFrame = 0;
+            $('asciiBox').classList.add('hidden');
+            setEngineBadge(null);
+            $('frameCounter').textContent = '';
+            $('progress').textContent = '';
+            els.scrubber.max = 0;
+            els.scrubber.value = 0;
+            const cv = els.displayCanvas;
+            const ctx = cv.getContext('2d');
+            if (ctx) ctx.clearRect(0, 0, cv.width, cv.height);
         }
 
         function updateScrubber() {
@@ -3142,6 +3509,38 @@ self.onmessage = async function (e) {
             else if (e.code === 'ArrowRight') { e.preventDefault(); (e.shiftKey ? els.jumpFwdBtn  : els.stepFwdBtn).click(); }
         });
 
+        // ==================== Drag and drop ====================
+        // Whole-window drop target. Track enter/leave depth so nested
+        // elements don't flicker the overlay; only react to actual files.
+        (function setupDragAndDrop() {
+            let depth = 0;
+            const hasFiles = (e) => e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+            window.addEventListener('dragenter', (e) => {
+                if (!hasFiles(e)) return;
+                e.preventDefault();
+                depth++;
+                document.body.classList.add('dragging');
+            });
+            window.addEventListener('dragover', (e) => {
+                if (!hasFiles(e)) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+            });
+            window.addEventListener('dragleave', (e) => {
+                if (!hasFiles(e)) return;
+                depth = Math.max(0, depth - 1);
+                if (depth === 0) document.body.classList.remove('dragging');
+            });
+            window.addEventListener('drop', (e) => {
+                if (!hasFiles(e)) return;
+                e.preventDefault();
+                depth = 0;
+                document.body.classList.remove('dragging');
+                const file = e.dataTransfer.files && e.dataTransfer.files[0];
+                if (file) handleIncomingFile(file);
+            });
+        })();
+
         // ==================== Export ====================
         els.exportBtn.onclick = async () => {
             if (state.frames.length === 0) { log('Export aborted: no frames yet — run Convert first.'); alert('Nothing to export'); return; }
@@ -3153,6 +3552,8 @@ self.onmessage = async function (e) {
             try {
                 if (fmt === 'txt') exportCurrentFrameTxt();
                 else if (fmt === 'ans') exportCurrentFrameAnsi();
+                else if (fmt === 'html') exportCurrentFrameHtml();
+                else if (fmt === 'png') await exportCurrentFramePng();
                 else if (fmt === 'gif-single') await exportCurrentFrameGif();
                 else if (fmt === 'sh') exportTerminalScript();
                 else if (fmt === 'mp4') await exportMP4();
@@ -3186,6 +3587,92 @@ self.onmessage = async function (e) {
             downloadBlob(new Blob([ansi], { type: 'text/plain' }),
                          `ascii-frame-${state.currentFrame + 1}.ans`);
             log(`ANSI frame exported: frame ${state.currentFrame + 1} (cat it in a truecolor terminal).`);
+        }
+
+        // Styled, self-contained HTML page of the current frame. Mono mode is
+        // one <pre> in the chosen color; full-color emits a per-cell <span>
+        // (truthful to the source colors, same as the ANSI export).
+        function exportCurrentFrameHtml() {
+            const frame = state.frames[state.currentFrame];
+            const rows = frame.chars.split('\n');
+            const colorMode = state.settings.colorMode;
+            const bg = /^#[0-9a-f]{6}$/i.test(state.colorGrade.bgColor) ? state.colorGrade.bgColor : '#000000';
+            const esc = (c) => c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '&' ? '&amp;' : c;
+
+            let pre;
+            if (colorMode === 'mono') {
+                const [br0, bg0, bb0] = hexToRgb(state.settings.monoColor);
+                const colors = frame.colors;
+                const gridW = state.asciiW;
+                let out = '';
+                for (let y = 0; y < rows.length; y++) {
+                    const row = rows[y];
+                    for (let x = 0; x < row.length; x++) {
+                        const idx = (y * gridW + x) * 3;
+                        const lum = 0.299 * colors[idx] + 0.587 * colors[idx + 1] + 0.114 * colors[idx + 2];
+                        const f = monoShadeFactor(lum);
+                        out += `<span style="color:rgb(${Math.round(br0 * f)},${Math.round(bg0 * f)},${Math.round(bb0 * f)})">${esc(row[x])}</span>`;
+                    }
+                    if (y < rows.length - 1) out += '\n';
+                }
+                pre = `<pre style="margin:0">${out}</pre>`;
+            } else {
+                const colors = frame.colors;
+                const gridW = state.asciiW;
+                let out = '';
+                for (let y = 0; y < rows.length; y++) {
+                    const row = rows[y];
+                    for (let x = 0; x < row.length; x++) {
+                        const idx = (y * gridW + x) * 3;
+                        out += `<span style="color:rgb(${colors[idx]},${colors[idx + 1]},${colors[idx + 2]})">${esc(row[x])}</span>`;
+                    }
+                    if (y < rows.length - 1) out += '\n';
+                }
+                pre = `<pre style="margin:0">${out}</pre>`;
+            }
+
+            const doc = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ASCII art</title>
+<style>
+  html,body{margin:0;height:100%;background:${bg};}
+  body{display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;}
+  pre{font:bold 10px/1 ui-monospace,"SF Mono",Menlo,Consolas,monospace;letter-spacing:0;white-space:pre;}
+</style>
+</head>
+<body>
+${pre}
+</body>
+</html>`;
+            downloadBlob(new Blob([doc], { type: 'text/html' }),
+                         `ascii-frame-${state.currentFrame + 1}.html`);
+            log(`HTML frame exported: frame ${state.currentFrame + 1} (open it in any browser).`);
+        }
+
+        // Flat PNG raster of the current frame, rendered through the same
+        // canvas painter the on-screen preview and GIF/MP4 exports use.
+        function exportCurrentFramePng() {
+            const gridW = state.asciiW, gridH = state.asciiH;
+            const canvas = document.createElement('canvas');
+            canvas.width = gridW * RENDER_CHAR_W;
+            canvas.height = gridH * RENDER_CHAR_H;
+            const frame = state.frames[state.currentFrame];
+            renderFrameToCanvas(frame, canvas, {
+                charW: RENDER_CHAR_W, charH: RENDER_CHAR_H,
+                colorMode: state.settings.colorMode,
+                monoColor: state.settings.monoColor,
+                gridW, gridH,
+            });
+            return new Promise((resolve) => {
+                canvas.toBlob((blob) => {
+                    downloadBlob(blob, `ascii-frame-${state.currentFrame + 1}.png`);
+                    log(`PNG frame exported: ${(blob.size / 1024).toFixed(1)} KB (${canvas.width}×${canvas.height}).`);
+                    resolve();
+                }, 'image/png');
+            });
         }
 
         // Single-frame GIF using the same gif.js worker as the animated export.
@@ -3252,9 +3739,26 @@ self.onmessage = async function (e) {
             let out = '';
 
             if (colorMode === 'mono') {
-                const [r, g, b] = hexToRgb(monoHex);
-                out = `${ESC}[38;2;${r};${g};${b}m`;
-                out += rows.join('\n');
+                // Greyscale: shade each glyph by its source luminance instead
+                // of one flat color, matching the on-screen render.
+                const [br0, bg0, bb0] = hexToRgb(monoHex);
+                let curKey = -1;
+                for (let y = 0; y < rows.length; y++) {
+                    const row = rows[y];
+                    for (let x = 0; x < row.length; x++) {
+                        const ch = row[x];
+                        const idx = (y * gridW + x) * 3;
+                        const lum = 0.299 * colors[idx] + 0.587 * colors[idx + 1] + 0.114 * colors[idx + 2];
+                        const f = monoShadeFactor(lum);
+                        const r = Math.round(br0 * f), g = Math.round(bg0 * f), b = Math.round(bb0 * f);
+                        if (ch !== ' ') {
+                            const key = (r << 16) | (g << 8) | b;
+                            if (key !== curKey) { out += `${ESC}[38;2;${r};${g};${b}m`; curKey = key; }
+                        }
+                        out += ch;
+                    }
+                    if (y < rows.length - 1) out += '\n';
+                }
                 out += `${ESC}[0m`;
                 return out;
             }
